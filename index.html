@@ -82,6 +82,13 @@ td.r,th.r{text-align:right}
 .order{border-bottom:1px solid var(--line);padding:8px 0}
 .order .hd{display:flex;justify-content:space-between;font-weight:700}
 .order .dt{font-size:13px;color:var(--muted);margin-top:3px}
+@media (min-width:900px){
+  main{max-width:1180px}
+  #review:not(.hidden){display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
+  #review .rvSide{position:sticky;top:70px;max-height:calc(100vh - 160px);overflow:auto}
+  #tab-report,#tab-settings,#scanStart,#scanBusy{max-width:760px;margin-left:auto;margin-right:auto}
+  .stats{grid-template-columns:repeat(4,1fr)}
+}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:20px;z-index:30;font-size:15px}
 </style>
 </head>
@@ -110,6 +117,7 @@ td.r,th.r{text-align:right}
     </div>
 
     <div id="review" class="hidden">
+     <div class="rvMain">
       <div class="card">
         <div class="total"><small>應收金額</small><span id="rvTotal">0</span> 元</div>
         <div class="meta">
@@ -121,7 +129,8 @@ td.r,th.r{text-align:right}
         <div id="rvWarn"></div>
       </div>
       <div class="card">
-        <div class="row" style="justify-content:space-between"><h2 style="margin:0">品項</h2><button class="small" id="btnAdd">＋ 加品項</button></div>
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">品項</h2>
+          <div class="row"><button class="small ghost" data-zoom="-1" aria-label="字變小">A−</button><button class="small ghost" data-zoom="1" aria-label="字變大">A＋</button><button class="small" id="btnAdd">＋ 加品項</button></div></div>
         <div class="items" id="rvItems"></div>
         <p class="muted" id="rvLegend">黃色＝看不太清楚，請確認數量</p>
       </div>
@@ -129,7 +138,8 @@ td.r,th.r{text-align:right}
         <button class="ghost" id="btnCancel">取消</button>
         <button class="ok grow big" id="btnSave" style="padding:16px">確認結帳</button>
       </div>
-      <div class="card" id="photoCard"><h2>點單照片</h2><img id="rvPhoto" class="photo" alt=""></div>
+     </div>
+      <div class="card rvSide" id="photoCard"><h2>點單照片</h2><img id="rvPhoto" class="photo" alt=""></div>
     </div>
   </section>
 
@@ -155,7 +165,7 @@ td.r,th.r{text-align:right}
   <!-- 設定 -->
   <section id="tab-settings" class="hidden">
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v9</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v10</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -171,10 +181,10 @@ td.r,th.r{text-align:right}
     </div>
     <div class="card">
       <h2>結帳畫面字體大小</h2>
-      <div class="seg" id="sFont" style="width:100%">
-        <button data-k="0.75" class="grow">小</button><button data-k="1" class="grow">中</button><button data-k="1.2" class="grow">大</button><button data-k="1.4" class="grow">特大</button>
-      </div>
-      <p class="muted">品項、數量、金額會跟著變大變小。</p>
+      <div class="row"><span>小</span><input type="range" id="sFont" min="0.7" max="2.2" step="0.05" class="grow" style="padding:0"><span style="font-size:22px">大</span></div>
+      <div class="row" style="margin-top:8px"><span class="muted grow" id="sFontVal"></span><button class="small ghost" id="sFontReset">恢復預設</button></div>
+      <div id="sFontPreview" class="items" style="margin-top:8px"><div class="it"><div class="r1"><div class="nm">打拋豬飯</div><div class="sub">$100</div></div></div></div>
+      <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
       <h2>資料備份</h2>
@@ -781,8 +791,12 @@ $('#fileRestore').onchange=async e=>{
   }catch(err){alert('還原失敗：'+err.message)}
 };
 
-function applyFont(k){document.documentElement.style.setProperty('--k',k);document.querySelectorAll('#sFont button').forEach(b=>b.classList.toggle('on',+b.dataset.k===+k))}
-document.querySelectorAll('#sFont button').forEach(b=>b.onclick=()=>{LS.set('fontK',+b.dataset.k);applyFont(+b.dataset.k)});
+function applyFont(k){k=Math.min(2.2,Math.max(0.7,Math.round(k*20)/20));document.documentElement.style.setProperty('--k',k);
+  const sl=$('#sFont');if(sl)sl.value=k;const v=$('#sFontVal');if(v)v.textContent='目前 '+Math.round(k*100)+'%';return k}
+function setFont(k){LS.set('fontK',applyFont(k))}
+$('#sFont').oninput=e=>setFont(+e.target.value);
+$('#sFontReset').onclick=()=>setFont(1);
+document.querySelectorAll('[data-zoom]').forEach(b=>b.onclick=()=>setFont(LS.get('fontK',1)+0.1*b.dataset.zoom));
 applyFont(LS.get('fontK',1));
 updateKeyHint();updateTodaySum();
 </script>
