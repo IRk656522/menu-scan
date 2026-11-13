@@ -152,7 +152,7 @@ td.r,th.r{text-align:right}
   <!-- 設定 -->
   <section id="tab-settings" class="hidden">
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v6</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v7</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -164,7 +164,7 @@ td.r,th.r{text-align:right}
       </div>
       <button class="ghost" id="btnAutoPick" style="width:100%;margin-top:8px">🔍 自動找一個能用的模型</button>
       <p id="testResult" style="font-size:14px;margin:8px 0 0"></p>
-      <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="sKeepPhoto" style="width:auto"> 保存點單照片（縮圖，會佔手機空間）</label>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="sKeepPhoto" style="width:auto"> 保存點單照片（店家修改會用藍筆補畫上去）</label>
     </div>
     <div class="card">
       <h2>資料備份</h2>
@@ -343,7 +343,8 @@ ${list.join('\n')}
 7. 沒寫東西的方格不要回傳。
 8. 「外帶」框或「內用」框有被打勾或寫字就是那一種；內用框裡的數字是桌號。都看不出來 dine 填「未知」。桌號沒寫就填空字串。
 9. 若「總計」框有寫金額，填在 written_total，否則填 0。
-只回傳 JSON，格式：{"dine":"內用|外帶|未知","table":"","written_total":0,"items":[{"id":"代碼","qty":1,"large":false,"uncertain":false,"note":""}]}`;
+10. anchors：回傳 4 個印刷定位物在照片中的位置，格式 [ymin,xmin,ymax,xmax]（0～1000 正規化座標）：qr＝右上的 LINE QR code；lucai＝「滷菜」標題橫條；liangban＝「涼拌小菜」標題橫條；zongji＝右下「總計」大框。看不到的就省略。
+只回傳 JSON，格式：{"dine":"內用|外帶|未知","table":"","written_total":0,"items":[{"id":"代碼","qty":1,"large":false,"uncertain":false,"note":""}],"anchors":{"qr":[0,0,0,0],"lucai":[0,0,0,0],"liangban":[0,0,0,0],"zongji":[0,0,0,0]}}`;
 }
 const SCHEMA={type:'OBJECT',properties:{
   dine:{type:'STRING',enum:['內用','外帶','未知']},
@@ -351,7 +352,8 @@ const SCHEMA={type:'OBJECT',properties:{
   written_total:{type:'INTEGER'},
   items:{type:'ARRAY',items:{type:'OBJECT',properties:{
     id:{type:'STRING'},qty:{type:'INTEGER'},large:{type:'BOOLEAN'},uncertain:{type:'BOOLEAN'},note:{type:'STRING'}
-  },required:['id','qty','large','uncertain']}}
+  },required:['id','qty','large','uncertain']}},
+  anchors:{type:'OBJECT',properties:{qr:{type:'ARRAY',items:{type:'INTEGER'}},lucai:{type:'ARRAY',items:{type:'INTEGER'}},liangban:{type:'ARRAY',items:{type:'INTEGER'}},zongji:{type:'ARRAY',items:{type:'INTEGER'}}}}
 },required:['dine','table','items','written_total']};
 
 async function fetchT(url,opt,ms){
@@ -433,7 +435,7 @@ async function recognize(b64,key){
     const qty=Math.max(1,Math.min(99,parseInt(x.qty)||1));
     items.push({id:m.id,qty,large:!!x.large&&m.large,unsure:!!x.uncertain,note:x.note||''});
   }
-  return {dine:o.dine==='外帶'?'外帶':'內用',table:o.table||'',items,writtenTotal:+o.written_total||0,warn};
+  return {dine:o.dine==='外帶'?'外帶':'內用',table:o.table||'',items,writtenTotal:+o.written_total||0,warn,anchors:o.anchors||null,fromAI:true};
 }
 
 /* ========= 確認畫面 ========= */
@@ -447,6 +449,7 @@ function openReview(o){
   const merged=[];
   for(const l of cur.items){const f=merged.find(x=>x.id===l.id&&x.large===l.large);if(f){f.qty+=l.qty;f.unsure=f.unsure||l.unsure;if(l.note)f.note=(f.note?f.note+'；':'')+l.note}else merged.push({...l})}
   cur.items=merged;
+  cur.ai=cur.fromAI?merged.map(l=>({id:l.id,large:l.large,qty:l.qty})):[];
   show($('#scanStart'),false); show($('#review'),true);
   $('#rvTable').value=cur.table||'';
   if(cur.photo){$('#rvPhoto').src=cur.photo;show($('#photoCard'),true)}else show($('#photoCard'),false);
@@ -497,11 +500,100 @@ $('#btnSave').onclick=async()=>{
     items:cur.items.map(l=>{const m=ITEM[l.id];return {id:l.id,name:m.name,price:m.price,large:!!l.large,largeAdd:l.large?LARGE_ADD:0,qty:l.qty,note:l.note||''}}),
     total:orderTotal(cur)
   };
-  if(LS.get('keepPhoto',false)&&cur.thumb)o.thumb=cur.thumb;
+  if(LS.get('keepPhoto',true)&&cur.photo){
+    try{o.thumb=await annotate(cur,o)}catch(e){console.error(e);o.thumb=cur.thumb}
+  }
   try{await putOrder(o)}catch(e){alert('儲存失敗：'+e.message);return}
   toast(`已結帳 ${money(o.total)} 元`);
   closeReview();
 };
+
+
+/* ========= 照片補畫店家修改 ========= */
+// 範本座標（以 1284×1806 的銅板麵店菜單圖為準）：每個品項數量格的中心
+const TPL={
+ 'zbm-y':[359,550],'zbm-b':[456,550],'zbm-m':[553,550],'zbm-d':[651,550],
+ 'ym-y':[359,623],'ym-b':[456,623],'ym-m':[553,623],'ym-d':[651,623],
+ gm:[359,773],gbt:[359,846],gmf:[359,920],zjm:[359,993],sjm:[359,1066],
+ gwt:[359,1224],lbt:[359,1297],zbrt:[359,1370],yrt:[359,1443],
+ hjpc:[359,1601],hspc:[359,1675],hsxyg:[359,1748],
+ cyjf:[790,773],dpzf:[790,846],ylf:[790,920],yrf:[790,993],lrf:[790,1066],bf:[790,1140],
+ 'hbd-q':[790,1294],'hbd-b':[790,1367],xb:[790,1521],kl:[790,1594],ljj:[790,1748],
+ ld:[1201,773],hd:[1201,840],mx:[1201,907],tbl:[1201,974],dg:[1201,1041],txd:[1201,1109],ydf:[1201,1176],
+ yms:[1201,1243],xbg:[1201,1311],tlb:[1201,1378],tqc:[1201,1445],zbr:[1201,1512],cyjt:[1201,1580]
+};
+const TPL_ANCHOR={qr:[730,338],lucai:[1067,709],liangban:[226,1537],zongji:[1067,1701]};
+const TPL_TOTAL=[1095,1701];
+function solve(A,b){const n=b.length;A=A.map((r,i)=>[...r,b[i]]);
+  for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;[A[c],A[p]]=[A[p],A[c]];
+    if(Math.abs(A[c][c])<1e-9)return null;
+    for(let r=0;r<n;r++)if(r!==c){const f=A[r][c]/A[c][c];for(let k=c;k<=n;k++)A[r][k]-=f*A[c][k]}}
+  return A.map((r,i)=>r[n]/r[i]);}
+function makeMap(src,dst){
+  if(src.length>=4){const A=[],b=[];for(let i=0;i<4;i++){const[x,y]=src[i],[u,v]=dst[i];A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v)}
+    const h=solve(A,b);if(!h)return null;return p=>{const w=h[6]*p[0]+h[7]*p[1]+1;return[(h[0]*p[0]+h[1]*p[1]+h[2])/w,(h[3]*p[0]+h[4]*p[1]+h[5])/w]}}
+  if(src.length===3){const A=[],b=[];for(let i=0;i<3;i++){const[x,y]=src[i],[u,v]=dst[i];A.push([x,y,1,0,0,0]);b.push(u);A.push([0,0,0,x,y,1]);b.push(v)}
+    const h=solve(A,b);if(!h)return null;return p=>[h[0]*p[0]+h[1]*p[1]+h[2],h[3]*p[0]+h[4]*p[1]+h[5]]}
+  return null;}
+function photoMap(anchors,W,H){
+  if(!anchors)return null;const src=[],dst=[];
+  for(const k of Object.keys(TPL_ANCHOR)){const a=anchors[k];if(!Array.isArray(a)||a.length!==4||a[2]<=a[0]||a[3]<=a[1])continue;
+    src.push(TPL_ANCHOR[k]);dst.push([(a[1]+a[3])/2000*W,(a[0]+a[2])/2000*H])}
+  const f=makeMap(src,dst);if(!f)return null;
+  // 檢查：總計框要落在照片內，且比例合理
+  const t=f(TPL_TOTAL),a=f([359,773]),b=f([1201,773]);
+  if(!(t[0]>0&&t[0]<W&&t[1]>0&&t[1]<H))return null;
+  const sc=Math.hypot(b[0]-a[0],b[1]-a[1])/842;if(!(sc>0.05&&sc<20))return null;
+  return {f,sc};
+}
+function diffItems(ai,items){
+  const k=l=>l.id+'|'+(l.large?1:0),A={},F={},out=[];
+  for(const l of ai)A[k(l)]=(A[k(l)]||0)+l.qty;
+  for(const l of items)F[k(l)]=(F[k(l)]||0)+l.qty;
+  for(const key of new Set([...Object.keys(A),...Object.keys(F)])){
+    const a=A[key]||0,f=F[key]||0;if(a===f)continue;
+    const [id,lg]=key.split('|');out.push({id,large:lg==='1',from:a,to:f});
+  }
+  return out;
+}
+async function annotate(c,o){
+  const img=new Image();img.src=c.photo;await img.decode();
+  const W=img.naturalWidth,H=img.naturalHeight;
+  const changes=diffItems(c.ai||[],c.items);
+  const lines=changes.map(d=>{const n=ITEM[d.id].name+(d.large?'(大)':'');
+    return d.from===0?`＋ ${n} ×${d.to}`:d.to===0?`✕ ${n}（刪除，原 ${d.from}）`:`✎ ${n} ${d.from} → ${d.to}`});
+  const fs=Math.round(W*0.032),pad=Math.round(fs*0.6);
+  const panelH=pad*2+fs*1.4*(1+Math.max(1,lines.length));
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H+panelH;
+  const g=cv.getContext('2d');g.drawImage(img,0,0);
+  const BLUE='#1556d6';
+  const map=photoMap(c.anchors,W,H);
+  if(map){
+    const {f,sc}=map;const s=sc;
+    g.strokeStyle=BLUE;g.fillStyle=BLUE;g.lineWidth=Math.max(2,5*s);g.textAlign='center';g.textBaseline='middle';
+    for(const d of changes){const p=TPL[d.id];if(!p)continue;const [x,y]=f(p);
+      const r=34*s;
+      if(d.to===0){g.beginPath();g.moveTo(x-r,y-r*0.7);g.lineTo(x+r,y+r*0.7);g.moveTo(x+r,y-r*0.7);g.lineTo(x-r,y+r*0.7);g.stroke();continue}
+      g.beginPath();g.ellipse(x,y,r*1.25,r*0.85,0,0,Math.PI*2);g.stroke();
+      g.font=`bold ${Math.round(34*s)}px sans-serif`;
+      g.fillText((d.from===0?'+':'→')+d.to+(d.large?'大':''),x,y);
+    }
+    const [tx,ty]=f(TPL_TOTAL);
+    g.font=`bold ${Math.round(56*s)}px sans-serif`;g.fillText(money(o.total),tx,ty);
+  }
+  // 底部修改紀錄
+  g.fillStyle='#eaf1ff';g.fillRect(0,H,W,panelH);
+  g.fillStyle=BLUE;g.textAlign='left';g.textBaseline='top';g.font=`bold ${fs}px sans-serif`;
+  const d=new Date(o.ts);
+  g.fillText(`店家結帳 ${o.date} ${hm(o.ts)}・${o.dine}${o.table?' '+o.table+'桌':''}・實收 ${money(o.total)} 元`,pad,H+pad);
+  g.font=`${fs}px sans-serif`;
+  (lines.length?lines:['（照辨識結果，沒有修改）']).forEach((t,i)=>g.fillText(t,pad,H+pad+fs*1.4*(i+1)));
+  // 縮小存檔
+  const sc2=Math.min(1,1100/Math.max(cv.width,cv.height));
+  const out=document.createElement('canvas');out.width=Math.round(cv.width*sc2);out.height=Math.round(cv.height*sc2);
+  out.getContext('2d').drawImage(cv,0,0,out.width,out.height);
+  return out.toDataURL('image/jpeg',0.75);
+}
 
 /* ========= 加品項 ========= */
 $('#btnAdd').onclick=()=>{
@@ -572,7 +664,7 @@ function loadSettings(){
   $('#sKey').value=LS.get('apiKey','');
   fillModels();
   if($('#sKey').value&&!LS.get('models',null))$('#sKey').onchange();
-  $('#sKeepPhoto').checked=LS.get('keepPhoto',false);
+  $('#sKeepPhoto').checked=LS.get('keepPhoto',true);
   $('#sLarge').value=LARGE_ADD;
   $('#sMenu').value=JSON.stringify(MENU.map(s=>({sec:s.sec,items:s.items.map(([id,name,price,large])=>({id,name,price,large:!!large}))})),null,1);
   allOrders().then(a=>$('#storageInfo').textContent=`手機裡共有 ${a.length} 張點單。清除瀏覽器資料會刪掉，記得定期備份。`);
