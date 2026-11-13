@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#7a3e1d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="點單掃描">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>點單掃描・銅板麵店</title>
+<style>
+:root{
+  --bg:#faf6f1; --card:#fff; --ink:#3b2416; --muted:#8a7565; --line:#eadfd4;
+  --brand:#7a3e1d; --brand2:#a85a2a; --ok:#2f7d4f; --warn:#fff3c4; --warnline:#e6c34a; --bad:#c0392b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;-webkit-text-size-adjust:100%}
+body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;background:var(--brand);color:#fff;padding:12px 16px calc(12px) ;padding-top:calc(12px + env(safe-area-inset-top));font-weight:700;font-size:18px;display:flex;justify-content:space-between;align-items:center}
+header small{font-weight:400;opacity:.8;font-size:13px}
+main{max-width:640px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+h2{font-size:16px;margin:0 0 10px}
+button{font:inherit;cursor:pointer;border:none;border-radius:12px;padding:12px 14px;background:#efe6dc;color:var(--ink);font-weight:600}
+button.primary{background:var(--brand);color:#fff}
+button.ok{background:var(--ok);color:#fff}
+button.ghost{background:transparent;border:1px solid var(--line)}
+button.small{padding:6px 10px;font-size:14px;border-radius:9px}
+button:disabled{opacity:.5}
+.big{width:100%;font-size:20px;padding:18px}
+.row{display:flex;gap:8px;align-items:center}
+.grow{flex:1}
+.muted{color:var(--muted);font-size:13px}
+input,select,textarea{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%}
+textarea{min-height:200px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{flex:1;background:none;border-radius:0;padding:12px 4px;color:var(--muted);font-size:14px}
+nav button.on{color:var(--brand);font-weight:800}
+.hidden{display:none!important}
+.total{font-size:44px;font-weight:800;color:var(--brand);text-align:center;line-height:1.1}
+.total small{font-size:16px;color:var(--muted);font-weight:500;display:block}
+.meta{display:flex;gap:8px;margin:10px 0}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border-radius:0;background:#fff;padding:9px 14px;font-weight:600}
+.seg button.on{background:var(--brand);color:#fff}
+.items .it{display:flex;align-items:center;gap:8px;padding:10px 6px;border-bottom:1px solid var(--line)}
+.items .it.unsure{background:var(--warn);border-left:4px solid var(--warnline);border-radius:8px}
+.it .nm{flex:1;min-width:0}
+.it .nm b{display:block}
+.it .nm span{font-size:12px;color:var(--muted)}
+.qty{display:flex;align-items:center;gap:4px}
+.qty button{width:36px;height:36px;padding:0;font-size:20px}
+.qty .n{min-width:24px;text-align:center;font-weight:800;font-size:18px}
+.dabtn{padding:6px 9px;font-size:14px;border-radius:8px;background:#fff;border:1px solid var(--line)}
+.dabtn.on{background:var(--brand2);color:#fff;border-color:var(--brand2)}
+.sub{min-width:56px;text-align:right;font-weight:700}
+.photo{width:100%;border-radius:10px;border:1px solid var(--line);margin-top:8px}
+.spinner{width:42px;height:42px;border:4px solid #e9d9c9;border-top-color:var(--brand);border-radius:50%;animation:sp 0.8s linear infinite;margin:20px auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.alert{background:#fdecea;color:var(--bad);border-radius:10px;padding:10px;font-size:14px;margin:8px 0}
+.note{background:var(--warn);border-radius:10px;padding:10px;font-size:14px;margin:8px 0}
+.picker h3{font-size:13px;color:var(--muted);margin:12px 0 6px}
+.picker .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}
+.picker .grid button{text-align:left;padding:9px 10px;font-weight:500;background:#fff;border:1px solid var(--line);font-size:14px}
+.picker .grid button i{font-style:normal;color:var(--muted);float:right}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20;display:flex;align-items:flex-end}
+.sheet .box{background:var(--bg);width:100%;max-height:85vh;overflow:auto;border-radius:18px 18px 0 0;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}
+.stat b{display:block;font-size:22px;color:var(--brand)}
+.stat span{font-size:12px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left}
+td.r,th.r{text-align:right}
+.bar{height:6px;background:var(--brand2);border-radius:3px;opacity:.7}
+.order{border-bottom:1px solid var(--line);padding:8px 0}
+.order .hd{display:flex;justify-content:space-between;font-weight:700}
+.order .dt{font-size:13px;color:var(--muted);margin-top:3px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:20px;z-index:30;font-size:15px}
+</style>
+</head>
+<body>
+<header><div>點單掃描 <small id="shopName">銅板麵店</small></div><small id="todaySum"></small></header>
+
+<main>
+  <!-- 結帳 -->
+  <section id="tab-scan">
+    <div id="scanStart" class="card">
+      <button class="primary big" id="btnCamera">📷 拍點單</button>
+      <input type="file" id="fileCam" accept="image/*" capture="environment" class="hidden">
+      <input type="file" id="fileLib" accept="image/*" class="hidden">
+      <div class="row" style="margin-top:10px">
+        <button class="ghost grow" id="btnLib">從相簿選</button>
+        <button class="ghost grow" id="btnManual">手動點單</button>
+      </div>
+      <p class="muted" id="keyHint"></p>
+    </div>
+
+    <div id="scanBusy" class="card hidden" style="text-align:center">
+      <div class="spinner"></div>
+      <div>辨識中…</div>
+      <div class="muted" id="busyTime"></div>
+    </div>
+
+    <div id="review" class="hidden">
+      <div class="card">
+        <div class="total"><small>應收金額</small><span id="rvTotal">0</span> 元</div>
+        <div class="meta">
+          <div class="seg" id="rvDine">
+            <button data-v="內用">內用</button><button data-v="外帶">外帶</button>
+          </div>
+          <input id="rvTable" placeholder="桌號" inputmode="numeric" style="width:90px">
+        </div>
+        <div id="rvWarn"></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">品項</h2><button class="small" id="btnAdd">＋ 加品項</button></div>
+        <div class="items" id="rvItems"></div>
+        <p class="muted" id="rvLegend">黃色＝看不太清楚，請確認數量</p>
+      </div>
+      <div class="row" style="margin-bottom:12px">
+        <button class="ghost" id="btnCancel">取消</button>
+        <button class="ok grow big" id="btnSave" style="padding:16px">確認結帳</button>
+      </div>
+      <div class="card" id="photoCard"><h2>點單照片</h2><img id="rvPhoto" class="photo" alt=""></div>
+    </div>
+  </section>
+
+  <!-- 業績 -->
+  <section id="tab-report" class="hidden">
+    <div class="card">
+      <div class="row" style="flex-wrap:wrap">
+        <button class="small" data-range="today">今天</button>
+        <button class="small" data-range="yesterday">昨天</button>
+        <button class="small" data-range="week">本週</button>
+        <button class="small" data-range="month">本月</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="date" id="rFrom"><span>～</span><input type="date" id="rTo">
+      </div>
+    </div>
+    <div class="stats" id="rStats"></div>
+    <div class="card" style="margin-top:12px"><h2>每日營業額</h2><table id="rDaily"></table></div>
+    <div class="card"><h2>品項銷量排行</h2><table id="rItems"></table></div>
+    <div class="card"><h2>點單明細</h2><div id="rOrders"></div></div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="tab-settings" class="hidden">
+    <div class="card">
+      <h2>Gemini 辨識設定</h2>
+      <label>API Key（只存在這支手機）</label>
+      <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
+      <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
+      <label>模型</label>
+      <input id="sModel" list="modelList">
+      <datalist id="modelList">
+        <option value="gemini-3.8-flash"><option value="gemini-3.6-flash"><option value="gemini-3.5-flash-lite"><option value="gemini-3.1-flash-lite">
+      </datalist>
+      <div class="row" style="margin-top:10px">
+        <button class="primary grow" id="btnSaveKey">儲存</button>
+        <button class="ghost" id="btnTestKey">測試連線</button>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="sKeepPhoto" style="width:auto"> 保存點單照片（縮圖，會佔手機空間）</label>
+    </div>
+    <div class="card">
+      <h2>資料備份</h2>
+      <div class="row" style="flex-wrap:wrap">
+        <button class="ghost" id="btnCsv">匯出 Excel (CSV)</button>
+        <button class="ghost" id="btnBackup">備份檔 (JSON)</button>
+        <button class="ghost" id="btnRestore">從備份還原</button>
+        <input type="file" id="fileRestore" accept=".json,application/json" class="hidden">
+      </div>
+      <p class="muted" id="storageInfo"></p>
+    </div>
+    <div class="card">
+      <h2>菜單與價格</h2>
+      <p class="muted">改價格或品項後按儲存。large: true 代表可加大。</p>
+      <label>加大加價</label>
+      <input id="sLarge" type="number" inputmode="numeric">
+      <label>菜單 (JSON)</label>
+      <textarea id="sMenu"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="primary grow" id="btnSaveMenu">儲存菜單</button>
+        <button class="ghost" id="btnResetMenu">還原預設</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="scan" class="on">📷 結帳</button>
+  <button data-tab="report">📊 業績</button>
+  <button data-tab="settings">⚙️ 設定</button>
+</nav>
+
+<div class="sheet hidden" id="pickSheet"><div class="box picker">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">加品項</h2><button class="small" id="btnPickClose">完成</button></div>
+  <div id="pickBody"></div>
+</div></div>
+
+<script>
+'use strict';
+/* ========= 預設菜單 ========= */
+const DEFAULT_MENU = [
+  {sec:'湯麵',items:[
+    ['zbm-y','嘴邊肉麵・油麵',75,1],['zbm-b','嘴邊肉麵・粄條',75,1],['zbm-m','嘴邊肉麵・米粉',75,1],['zbm-d','嘴邊肉麵・冬粉',75,1],
+    ['ym-y','鴨肉麵・油麵',85,1],['ym-b','鴨肉麵・粄條',85,1],['ym-m','鴨肉麵・米粉',85,1],['ym-d','鴨肉麵・冬粉',85,1]]},
+  {sec:'乾麵',items:[['gm','乾麵',55,1],['gbt','乾粄條',55,1],['gmf','乾米粉',55,1],['zjm','醡醬麵',65,1],['sjm','雙醬麵',75,1]]},
+  {sec:'湯品',items:[['gwt','貢丸湯',35],['lbt','蘿蔔湯',35],['zbrt','嘴邊肉湯',50],['yrt','鴨肉湯',70]]},
+  {sec:'涼拌小菜',items:[['hjpc','黃金泡菜',45],['hspc','韓式泡菜',45],['hsxyg','花生小魚乾',45]]},
+  {sec:'飯食',items:[['cyjf','蔥油雞飯',135,1],['dpzf','打拋豬飯',100,1],['ylf','鴨滷飯',65,1],['yrf','鴨肉飯',60,1],['lrf','滷肉飯',45,1],['bf','白飯',15,1]]},
+  {sec:'加顆蛋',items:[['hbd-q','荷包蛋(全熟)',20],['hbd-b','荷包蛋(半熟)',20]]},
+  {sec:'飲品',items:[['xb','雪碧',25],['kl','可樂',25]]},
+  {sec:'手工',items:[['ljj','辣椒醬',170]]},
+  {sec:'滷菜',items:[['ld','滷蛋',15],['hd','海帶',15],['mx','米血',15],['tbl','甜不辣',20],['dg','豆干(2片)',30],['txd','溏心蛋',30],['ydf','油豆腐(2個)',35],['yms','玉米筍',35],['xbg','杏鮑菇',35],['tlb','燙蘿蔔',35],['tqc','燙青菜',45],['zbr','嘴邊肉',65],['cyjt','蔥油雞腿',80]]},
+];
+const LAYOUT_HINT = `菜單版面（由上到下、由左到右）：
+- 右上：「外帶」框、「內用」框（內用框右下角是桌號，桌號通常手寫在內用框裡）。
+- 最上方「湯麵」區是表格：列＝嘴邊肉麵、鴨肉麵；欄＝油麵、粄條、米粉、冬粉，每一格各自是一個品項。
+- 左欄：乾麵（乾麵、乾粄條、乾米粉、醡醬麵、雙醬麵）→ 湯品（貢丸湯、蘿蔔湯、嘴邊肉湯、鴨肉湯）→ 涼拌小菜（黃金泡菜、韓式泡菜、花生小魚乾）。
+- 中欄：飯食（蔥油雞飯、打拋豬飯、鴨滷飯、鴨肉飯、滷肉飯、白飯）→ 加顆蛋（荷包蛋全熟、荷包蛋半熟）→ 飲品（雪碧、可樂）→ 手工（辣椒醬）。
+- 右欄：滷菜（滷蛋、海帶、米血、甜不辣、豆干、溏心蛋、油豆腐、玉米筍、杏鮑菇、燙蘿蔔、燙青菜、嘴邊肉、蔥油雞腿）→ 最下方「總計」框。
+每個品項右邊有一個空白方格，客人在方格裡（或方格附近）手寫數量。`;
+
+/* ========= 狀態與儲存 ========= */
+const LS = {
+  get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+let MENU = LS.get('menu', DEFAULT_MENU);
+let LARGE_ADD = LS.get('largeAdd', 15);
+let ITEM = {}; // id -> {id,name,price,large,sec}
+function indexMenu(){ITEM={};for(const s of MENU)for(const [id,name,price,large] of s.items)ITEM[id]={id,name,price:+price,large:!!large,sec:s.sec};}
+indexMenu();
+
+const DB_NAME='menuscan', STORE='orders';
+let dbp=null;
+function db(){
+  if(dbp) return dbp;
+  dbp=new Promise((res,rej)=>{
+    const r=indexedDB.open(DB_NAME,1);
+    r.onupgradeneeded=()=>{const s=r.result.createObjectStore(STORE,{keyPath:'id'});s.createIndex('date','date')};
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });
+  return dbp;
+}
+async function tx(mode,fn){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(STORE,mode);const s=t.objectStore(STORE);let out;Promise.resolve(fn(s)).then(v=>out=v);t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error)})}
+function reqP(r){return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+const putOrder=o=>tx('readwrite',s=>reqP(s.put(o)));
+const delOrder=id=>tx('readwrite',s=>reqP(s.delete(id)));
+const allOrders=()=>tx('readonly',s=>reqP(s.getAll()));
+async function ordersBetween(from,to){const d=await db();return new Promise((res,rej)=>{const r=d.transaction(STORE).objectStore(STORE).index('date').getAll(IDBKeyRange.bound(from,to));r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+
+/* ========= 工具 ========= */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const hm=ts=>{const d=new Date(ts);return `${pad(d.getHours())}:${pad(d.getMinutes())}`};
+const money=n=>Number(n).toLocaleString('zh-TW');
+function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),1800)}
+function show(el,on){el.classList.toggle('hidden',!on)}
+
+/* ========= 分頁 ========= */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  for(const t of ['scan','report','settings']) show($('#tab-'+t),t===b.dataset.tab);
+  if(b.dataset.tab==='report') renderReport();
+  if(b.dataset.tab==='settings') loadSettings();
+  window.scrollTo(0,0);
+});
+
+/* ========= 拍照 → 縮圖 ========= */
+$('#btnCamera').onclick=()=>$('#fileCam').click();
+$('#btnLib').onclick=()=>$('#fileLib').click();
+$('#fileCam').onchange=e=>onFile(e.target);
+$('#fileLib').onchange=e=>onFile(e.target);
+$('#btnManual').onclick=()=>openReview({dine:'內用',table:'',items:[],photo:null,warn:[]});
+
+function updateKeyHint(){
+  const k=LS.get('apiKey','');
+  $('#keyHint').innerHTML = k ? '' : '⚠️ 還沒設定 Gemini API Key，請到「設定」貼上，才能自動辨識。';
+}
+
+async function loadImage(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=new Image(); img.src=url; await img.decode();
+    return img;
+  } finally { setTimeout(()=>URL.revokeObjectURL(url),1000) }
+}
+function resize(img,max,q){
+  const s=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+  const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*s);c.height=Math.round(img.naturalHeight*s);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',q);
+}
+
+async function onFile(input){
+  const f=input.files&&input.files[0]; input.value='';
+  if(!f) return;
+  const key=LS.get('apiKey','');
+  let img;
+  try{ img=await loadImage(f) }catch(e){ alert('讀不到這張照片'); return }
+  const big=resize(img,1600,0.85);
+  const thumb=resize(img,700,0.6);
+  if(!key){ openReview({dine:'內用',table:'',items:[],photo:big,thumb,warn:['還沒設定 API Key，請手動加品項，或到「設定」貼上 Key。']}); return }
+  show($('#scanStart'),false); show($('#scanBusy'),true);
+  const t0=Date.now(); const timer=setInterval(()=>$('#busyTime').textContent=((Date.now()-t0)/1000).toFixed(1)+' 秒',100);
+  try{
+    const r=await recognize(big.split(',')[1],key);
+    openReview({...r,photo:big,thumb});
+  }catch(e){
+    console.error(e);
+    openReview({dine:'內用',table:'',items:[],photo:big,thumb,warn:['辨識失敗：'+(e.message||e)+'。可以手動加品項。']});
+  }finally{
+    clearInterval(timer); show($('#scanBusy'),false);
+  }
+}
+
+/* ========= Gemini 辨識 ========= */
+function buildPrompt(){
+  const list=[];
+  for(const s of MENU) for(const [id,name] of s.items) list.push(`${id}｜${s.sec}｜${name}`);
+  return `你是小吃店的點單辨識員。照片是一張客人手寫填好的紙本點單。
+${LAYOUT_HINT}
+
+品項代碼表（代碼｜區塊｜品名）：
+${list.join('\n')}
+
+請找出「每一個有被寫上數量的方格」，回傳對應的品項代碼與數量。規則：
+1. 數量可能是阿拉伯數字，或「正」字筆畫計數：一=1、丅(兩筆)=2、下(三筆)=3、正少一筆(四筆)=4、正=5；多個正字或正字加筆畫要相加。
+2. 只有一條橫線或斜線＝1。打勾 ✓ 也＝1。
+3. 筆畫可能寫歪、超出方格、跨到隔壁欄的空白處：依照筆畫最靠近、最對齊的那一列品項判斷。
+4. 方格旁邊寫「大」代表該品項加大，large=true（數量照寫的數字/正字）。
+5. 若寫了「白麵」或其他文字備註，放在 note。
+6. 只要有任何不確定（筆畫數看不清、位置介於兩列之間、可能是汙漬），uncertain=true，並在 note 簡短說明。
+7. 沒寫東西的方格不要回傳。
+8. 「外帶」框或「內用」框有被打勾或寫字就是那一種；內用框裡的數字是桌號。都看不出來 dine 填空字串。
+9. 若「總計」框有寫金額，填在 written_total，否則填 0。
+只回傳 JSON。`;
+}
+const SCHEMA={type:'OBJECT',properties:{
+  dine:{type:'STRING',enum:['內用','外帶','']},
+  table:{type:'STRING'},
+  written_total:{type:'INTEGER'},
+  items:{type:'ARRAY',items:{type:'OBJECT',properties:{
+    id:{type:'STRING'},qty:{type:'INTEGER'},large:{type:'BOOLEAN'},uncertain:{type:'BOOLEAN'},note:{type:'STRING'}
+  },required:['id','qty','large','uncertain']}}
+},required:['dine','table','items','written_total']};
+
+async function callGemini(body,key){
+  const model=LS.get('model','gemini-3.8-flash');
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){
+    const m=j.error&&j.error.message||('HTTP '+r.status);
+    if(r.status===429) throw new Error('免費額度用完或太頻繁，稍等一下再試');
+    if(r.status===400&&/API key/i.test(m)) throw new Error('API Key 不正確');
+    if(r.status===404) throw new Error('找不到模型「'+model+'」，請到設定換一個');
+    throw new Error(m);
+  }
+  return j;
+}
+
+async function recognize(b64,key){
+  const j=await callGemini({
+    contents:[{parts:[{text:buildPrompt()},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],
+    generationConfig:{temperature:0,responseMimeType:'application/json',responseSchema:SCHEMA}
+  },key);
+  const txt=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');
+  let o; try{o=JSON.parse(txt)}catch(e){throw new Error('辨識結果格式錯誤')}
+  const warn=[]; const items=[];
+  for(const x of o.items||[]){
+    const m=ITEM[x.id];
+    if(!m){warn.push('有一格對不到菜單（'+x.id+'），請檢查照片');continue}
+    const qty=Math.max(1,Math.min(99,parseInt(x.qty)||1));
+    items.push({id:m.id,qty,large:!!x.large&&m.large,unsure:!!x.uncertain,note:x.note||''});
+  }
+  return {dine:o.dine||'內用',table:o.table||'',items,writtenTotal:+o.written_total||0,warn};
+}
+
+/* ========= 確認畫面 ========= */
+let cur=null; // {dine,table,items:[{id,qty,large,unsure,note}],photo,thumb,writtenTotal,warn}
+function lineTotal(l){const m=ITEM[l.id];if(!m)return 0;return (m.price+(l.large?LARGE_ADD:0))*l.qty}
+function orderTotal(o){return o.items.reduce((a,l)=>a+lineTotal(l),0)}
+
+function openReview(o){
+  cur={dine:'內用',table:'',items:[],warn:[],writtenTotal:0,...o};
+  // 合併同品項同加大
+  const merged=[];
+  for(const l of cur.items){const f=merged.find(x=>x.id===l.id&&x.large===l.large);if(f){f.qty+=l.qty;f.unsure=f.unsure||l.unsure;if(l.note)f.note=(f.note?f.note+'；':'')+l.note}else merged.push({...l})}
+  cur.items=merged;
+  show($('#scanStart'),false); show($('#review'),true);
+  $('#rvTable').value=cur.table||'';
+  if(cur.photo){$('#rvPhoto').src=cur.photo;show($('#photoCard'),true)}else show($('#photoCard'),false);
+  renderReview();
+  window.scrollTo(0,0);
+}
+function renderReview(){
+  document.querySelectorAll('#rvDine button').forEach(b=>b.classList.toggle('on',b.dataset.v===cur.dine));
+  show($('#rvTable'),cur.dine==='內用');
+  const total=orderTotal(cur);
+  $('#rvTotal').textContent=money(total);
+  let w=cur.warn.map(x=>`<div class="alert">${esc(x)}</div>`).join('');
+  if(cur.writtenTotal&&cur.writtenTotal!==total) w+=`<div class="note">客人寫的總計是 <b>${money(cur.writtenTotal)}</b> 元，和計算結果不同，請確認。</div>`;
+  $('#rvWarn').innerHTML=w;
+  const box=$('#rvItems');
+  if(!cur.items.length){box.innerHTML='<p class="muted">還沒有品項，按「＋ 加品項」。</p>';show($('#rvLegend'),false);return}
+  show($('#rvLegend'),cur.items.some(l=>l.unsure));
+  box.innerHTML=cur.items.map((l,i)=>{
+    const m=ITEM[l.id];
+    return `<div class="it ${l.unsure?'unsure':''}">
+      <div class="nm"><b>${esc(m.name)}</b><span>${m.price}${l.large?' +'+LARGE_ADD+'(大)':''}${l.note?'・'+esc(l.note):''}</span></div>
+      ${m.large?`<button class="dabtn ${l.large?'on':''}" data-a="large" data-i="${i}">大</button>`:''}
+      <div class="qty"><button data-a="dec" data-i="${i}">−</button><span class="n">${l.qty}</span><button data-a="inc" data-i="${i}">＋</button></div>
+      <div class="sub">${money(lineTotal(l))}</div>
+    </div>`}).join('');
+}
+$('#rvItems').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const l=cur.items[+b.dataset.i];if(!l)return;
+  if(b.dataset.a==='inc')l.qty++;
+  if(b.dataset.a==='dec'){l.qty--;if(l.qty<=0)cur.items.splice(+b.dataset.i,1)}
+  if(b.dataset.a==='large')l.large=!l.large;
+  l.unsure=false;
+  renderReview();
+};
+document.querySelectorAll('#rvDine button').forEach(b=>b.onclick=()=>{cur.dine=b.dataset.v;renderReview()});
+$('#rvTable').oninput=e=>cur.table=e.target.value;
+$('#btnCancel').onclick=()=>{if(cur.items.length&&!confirm('取消這張單？'))return;closeReview()};
+function closeReview(){cur=null;show($('#review'),false);show($('#scanStart'),true);updateKeyHint();updateTodaySum()}
+
+$('#btnSave').onclick=async()=>{
+  if(!cur.items.length){alert('沒有品項');return}
+  if(cur.items.some(l=>l.unsure)&&!confirm('還有黃色（不確定）的品項，確定沒問題嗎？'))return;
+  const now=new Date();
+  const o={
+    id:now.getTime()+'-'+Math.random().toString(36).slice(2,6),
+    ts:now.getTime(), date:ymd(now), dine:cur.dine, table:cur.dine==='內用'?String(cur.table||'').trim():'',
+    items:cur.items.map(l=>{const m=ITEM[l.id];return {id:l.id,name:m.name,price:m.price,large:!!l.large,largeAdd:l.large?LARGE_ADD:0,qty:l.qty,note:l.note||''}}),
+    total:orderTotal(cur)
+  };
+  if(LS.get('keepPhoto',false)&&cur.thumb)o.thumb=cur.thumb;
+  try{await putOrder(o)}catch(e){alert('儲存失敗：'+e.message);return}
+  toast(`已結帳 ${money(o.total)} 元`);
+  closeReview();
+};
+
+/* ========= 加品項 ========= */
+$('#btnAdd').onclick=()=>{
+  $('#pickBody').innerHTML=MENU.map(s=>`<h3>${esc(s.sec)}</h3><div class="grid">${s.items.map(([id,name,price])=>`<button data-id="${esc(id)}">${esc(name)}<i>${price}</i></button>`).join('')}</div>`).join('');
+  show($('#pickSheet'),true);
+};
+$('#pickBody').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const f=cur.items.find(x=>x.id===b.dataset.id&&!x.large);
+  if(f)f.qty++;else cur.items.push({id:b.dataset.id,qty:1,large:false,unsure:false,note:''});
+  renderReview();toast('＋ '+ITEM[b.dataset.id].name);
+};
+$('#btnPickClose').onclick=()=>show($('#pickSheet'),false);
+$('#pickSheet').onclick=e=>{if(e.target.id==='pickSheet')show($('#pickSheet'),false)};
+
+/* ========= 業績 ========= */
+function setRange(k){
+  const d=new Date();let f=new Date(d),t=new Date(d);
+  if(k==='yesterday'){f.setDate(d.getDate()-1);t=new Date(f)}
+  if(k==='week'){const wd=(d.getDay()+6)%7;f.setDate(d.getDate()-wd)}
+  if(k==='month'){f=new Date(d.getFullYear(),d.getMonth(),1)}
+  $('#rFrom').value=ymd(f);$('#rTo').value=ymd(t);renderReport();
+}
+document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>setRange(b.dataset.range));
+$('#rFrom').onchange=$('#rTo').onchange=()=>renderReport();
+
+async function renderReport(){
+  if(!$('#rFrom').value){const t=ymd(new Date());$('#rFrom').value=t;$('#rTo').value=t}
+  let f=$('#rFrom').value,t=$('#rTo').value;if(f>t)[f,t]=[t,f];
+  const os=(await ordersBetween(f,t)).sort((a,b)=>b.ts-a.ts);
+  const sum=os.reduce((a,o)=>a+o.total,0);
+  const inn=os.filter(o=>o.dine==='內用'),out=os.filter(o=>o.dine==='外帶');
+  const s=a=>a.reduce((x,o)=>x+o.total,0);
+  $('#rStats').innerHTML=`
+    <div class="stat"><span>營業額</span><b>${money(sum)}</b></div>
+    <div class="stat"><span>單數 / 平均客單</span><b>${os.length} / ${os.length?money(Math.round(sum/os.length)):0}</b></div>
+    <div class="stat"><span>內用 ${inn.length} 單</span><b>${money(s(inn))}</b></div>
+    <div class="stat"><span>外帶 ${out.length} 單</span><b>${money(s(out))}</b></div>`;
+  // 每日
+  const byDay={};for(const o of os){(byDay[o.date]??={n:0,t:0});byDay[o.date].n++;byDay[o.date].t+=o.total}
+  const days=Object.keys(byDay).sort().reverse();
+  $('#rDaily').innerHTML=days.length?`<tr><th>日期</th><th class="r">單數</th><th class="r">營業額</th></tr>`+days.map(d=>`<tr><td>${d}</td><td class="r">${byDay[d].n}</td><td class="r">${money(byDay[d].t)}</td></tr>`).join(''):'<tr><td class="muted">沒有資料</td></tr>';
+  // 品項
+  const byItem={};
+  for(const o of os)for(const l of o.items){const k=l.name;(byItem[k]??={q:0,t:0,big:0});byItem[k].q+=l.qty;byItem[k].t+=(l.price+(l.largeAdd||0))*l.qty;if(l.large)byItem[k].big+=l.qty}
+  const rk=Object.entries(byItem).sort((a,b)=>b[1].q-a[1].q||b[1].t-a[1].t);
+  const maxq=rk.length?rk[0][1].q:1;
+  $('#rItems').innerHTML=rk.length?`<tr><th>品項</th><th class="r">份數</th><th class="r">金額</th></tr>`+rk.map(([n,v])=>`<tr><td>${esc(n)}${v.big?` <span class="muted">(大${v.big})</span>`:''}<div class="bar" style="width:${Math.max(4,v.q/maxq*100)}%"></div></td><td class="r">${v.q}</td><td class="r">${money(v.t)}</td></tr>`).join(''):'<tr><td class="muted">沒有資料</td></tr>';
+  // 明細
+  $('#rOrders').innerHTML=os.length?os.map(o=>`<div class="order">
+    <div class="hd"><span>${o.date.slice(5)} ${hm(o.ts)}・${o.dine}${o.table?' '+esc(o.table)+'桌':''}</span><span>${money(o.total)}</span></div>
+    <div class="dt">${o.items.map(l=>esc(l.name)+(l.large?'(大)':'')+'×'+l.qty).join('、')}</div>
+    <div class="row" style="margin-top:6px">${o.thumb?`<button class="small ghost" data-ph="${o.id}">看照片</button>`:''}<button class="small ghost" data-del="${o.id}">刪除</button></div>
+    ${o.thumb?`<img class="photo hidden" id="ph-${o.id}" src="${o.thumb}">`:''}
+  </div>`).join(''):'<p class="muted">沒有資料</p>';
+}
+$('#rOrders').onclick=async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.ph){const im=document.getElementById('ph-'+b.dataset.ph);im.classList.toggle('hidden')}
+  if(b.dataset.del&&confirm('刪除這張單？')){await delOrder(b.dataset.del);renderReport();updateTodaySum()}
+};
+async function updateTodaySum(){
+  try{const t=ymd(new Date());const os=await ordersBetween(t,t);$('#todaySum').textContent=`今日 ${os.length} 單・${money(os.reduce((a,o)=>a+o.total,0))} 元`}catch(e){}
+}
+
+/* ========= 設定 ========= */
+function loadSettings(){
+  $('#sKey').value=LS.get('apiKey','');
+  $('#sModel').value=LS.get('model','gemini-3.8-flash');
+  $('#sKeepPhoto').checked=LS.get('keepPhoto',false);
+  $('#sLarge').value=LARGE_ADD;
+  $('#sMenu').value=JSON.stringify(MENU.map(s=>({sec:s.sec,items:s.items.map(([id,name,price,large])=>({id,name,price,large:!!large}))})),null,1);
+  allOrders().then(a=>$('#storageInfo').textContent=`手機裡共有 ${a.length} 張點單。清除瀏覽器資料會刪掉，記得定期備份。`);
+}
+$('#btnSaveKey').onclick=()=>{LS.set('apiKey',$('#sKey').value.trim());LS.set('model',$('#sModel').value.trim()||'gemini-3.8-flash');toast('已儲存');updateKeyHint()};
+$('#sKeepPhoto').onchange=e=>LS.set('keepPhoto',e.target.checked);
+$('#btnTestKey').onclick=async()=>{
+  LS.set('apiKey',$('#sKey').value.trim());LS.set('model',$('#sModel').value.trim()||'gemini-3.8-flash');
+  const b=$('#btnTestKey');b.disabled=true;b.textContent='測試中…';
+  try{await callGemini({contents:[{parts:[{text:'回覆 OK'}]}]},$('#sKey').value.trim());alert('連線成功 ✅')}
+  catch(e){alert('失敗：'+e.message)}
+  finally{b.disabled=false;b.textContent='測試連線'}
+};
+$('#btnSaveMenu').onclick=()=>{
+  try{
+    const m=JSON.parse($('#sMenu').value);
+    const conv=m.map(s=>{if(!s.sec||!Array.isArray(s.items))throw new Error('格式錯誤');return {sec:s.sec,items:s.items.map(i=>{if(!i.id||!i.name||isNaN(+i.price))throw new Error('品項缺 id/name/price');return [i.id,i.name,+i.price,i.large?1:0]})}});
+    const ids=conv.flatMap(s=>s.items.map(i=>i[0]));if(new Set(ids).size!==ids.length)throw new Error('id 重複');
+    MENU=conv;LARGE_ADD=+$('#sLarge').value||0;LS.set('menu',MENU);LS.set('largeAdd',LARGE_ADD);indexMenu();toast('菜單已儲存');
+  }catch(e){alert('菜單有誤：'+e.message)}
+};
+$('#btnResetMenu').onclick=()=>{if(!confirm('還原成預設菜單？'))return;MENU=DEFAULT_MENU;LARGE_ADD=15;LS.set('menu',MENU);LS.set('largeAdd',15);indexMenu();loadSettings();toast('已還原')};
+
+function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+const csvCell=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+$('#btnCsv').onclick=async()=>{
+  const os=(await allOrders()).sort((a,b)=>a.ts-b.ts);
+  const rows=[['日期','時間','單號','內用/外帶','桌號','品項','單價','加大','數量','小計','備註','整單金額']];
+  for(const o of os)for(const l of o.items)rows.push([o.date,hm(o.ts),o.id,o.dine,o.table,l.name,l.price,l.large?'大':'',l.qty,(l.price+(l.largeAdd||0))*l.qty,l.note,o.total]);
+  download(`點單明細_${ymd(new Date())}.csv`,'﻿'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n'),'text/csv;charset=utf-8');
+};
+$('#btnBackup').onclick=async()=>{
+  const os=await allOrders();
+  download(`點單備份_${ymd(new Date())}.json`,JSON.stringify({v:1,menu:MENU,largeAdd:LARGE_ADD,orders:os}),'application/json');
+};
+$('#btnRestore').onclick=()=>$('#fileRestore').click();
+$('#fileRestore').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{
+    const j=JSON.parse(await f.text());if(!Array.isArray(j.orders))throw new Error('不是備份檔');
+    if(!confirm(`還原 ${j.orders.length} 張點單？（相同的單會覆蓋，其他保留）`))return;
+    for(const o of j.orders)await putOrder(o);
+    if(j.menu&&confirm('也要還原備份裡的菜單價格嗎？')){MENU=j.menu;LARGE_ADD=j.largeAdd??15;LS.set('menu',MENU);LS.set('largeAdd',LARGE_ADD);indexMenu()}
+    loadSettings();updateTodaySum();toast('還原完成');
+  }catch(err){alert('還原失敗：'+err.message)}
+};
+
+updateKeyHint();updateTodaySum();
+</script>
+</body>
+</html>
