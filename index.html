@@ -101,7 +101,7 @@ td.r,th.r{text-align:right}
 </style>
 </head>
 <body>
-<header><div>點單掃描 <small id="shopName">銅板麵店</small></div><small id="todaySum"></small></header>
+<header><div>點單掃描 <small id="shopName"></small></div><small id="todaySum"></small></header>
 
 <main>
   <!-- 結帳 -->
@@ -212,7 +212,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v12</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v13</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -263,23 +263,20 @@ td.r,th.r{text-align:right}
   <div id="pickBody"></div>
 </div></div>
 
-<script src="menu.js"></script>
+<script>
+var SHOP=(new URLSearchParams(location.search).get('shop')||'').replace(/[^\w-]/g,'');
+document.write('<script src="'+(SHOP?'shops/'+SHOP+'.js':'menu.js')+'"><\/script>');
+</script>
 <script src="lib/qrcode.js"></script>
 <script src="lib/jsQR.js"></script>
 <script>
 'use strict';
-const LAYOUT_HINT = `菜單版面（由上到下、由左到右）：
-- 右上：「外帶」框、「內用」框（內用框右下角是桌號，桌號通常手寫在內用框裡）。
-- 最上方「湯麵」區是表格：列＝嘴邊肉麵、鴨肉麵；欄＝油麵、粄條、米粉、冬粉，每一格各自是一個品項。
-- 左欄：乾麵（乾麵、乾粄條、乾米粉、醡醬麵、雙醬麵）→ 湯品（貢丸湯、蘿蔔湯、嘴邊肉湯、鴨肉湯）→ 涼拌小菜（黃金泡菜、韓式泡菜、花生小魚乾）。
-- 中欄：飯食（蔥油雞飯、打拋豬飯、鴨滷飯、鴨肉飯、滷肉飯、白飯）→ 加顆蛋（荷包蛋全熟、荷包蛋半熟）→ 飲品（雪碧、可樂）→ 手工（辣椒醬）。
-- 右欄：滷菜（滷蛋、海帶、米血、甜不辣、豆干、溏心蛋、油豆腐、玉米筍、杏鮑菇、燙蘿蔔、燙青菜、嘴邊肉、蔥油雞腿）→ 最下方「總計」框。
-每個品項右邊有一個空白方格，客人在方格裡（或方格附近）手寫數量。`;
 
 /* ========= 狀態與儲存 ========= */
+const NS=SHOP?SHOP+':':'';
 const LS = {
-  get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
-  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+  get(k,d){try{const v=localStorage.getItem(NS+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(NS+k,JSON.stringify(v))}catch(e){}}
 };
 let MENU = LS.get('menu', DEFAULT_MENU);
 let LARGE_ADD = LS.get('largeAdd', DEFAULT_LARGE_ADD);
@@ -287,7 +284,7 @@ let ITEM = {}; // id -> {id,name,price,large,sec}
 function indexMenu(){ITEM={};for(const s of MENU)for(const [id,name,price,large] of s.items)ITEM[id]={id,name,price:+price,large:!!large,sec:s.sec};}
 indexMenu();
 
-const DB_NAME='menuscan', STORE='orders';
+const DB_NAME='menuscan'+(SHOP?'-'+SHOP:''), STORE='orders';
 let dbp=null;
 function db(){
   if(dbp) return dbp;
@@ -394,8 +391,7 @@ ${list.join('\n')}
 7. 沒寫東西的方格不要回傳。
 8. 「外帶」框或「內用」框有被打勾或寫字就是那一種；內用框裡的數字是桌號。都看不出來 dine 填「未知」。桌號沒寫就填空字串。
 9. 若「總計」框有寫金額，填在 written_total，否則填 0。
-10. anchors：回傳 4 個印刷定位物在照片中的位置，格式 [ymin,xmin,ymax,xmax]（0～1000 正規化座標）：qr＝右上的 LINE QR code；lucai＝「滷菜」標題橫條；liangban＝「涼拌小菜」標題橫條；zongji＝右下「總計」大框。看不到的就省略。
-只回傳 JSON，格式：{"dine":"內用|外帶|未知","table":"","written_total":0,"items":[{"id":"代碼","qty":1,"large":false,"uncertain":false,"note":""}],"anchors":{"qr":[0,0,0,0],"lucai":[0,0,0,0],"liangban":[0,0,0,0],"zongji":[0,0,0,0]}}`;
+${typeof ANCHOR_HINT!=="undefined"?ANCHOR_HINT:""}只回傳 JSON，格式：{"dine":"內用|外帶|未知","table":"","written_total":0,"items":[{"id":"代碼","qty":1,"large":false,"uncertain":false,"note":""}],"anchors":{"qr":[0,0,0,0],"lucai":[0,0,0,0],"liangban":[0,0,0,0],"zongji":[0,0,0,0]}}`;
 }
 const SCHEMA={type:'OBJECT',properties:{
   dine:{type:'STRING',enum:['內用','外帶','未知']},
@@ -514,6 +510,8 @@ function renderReview(){
   $('#rvTotal').textContent=money(total);
   let w=cur.warn.map(x=>`<div class="alert">${esc(x)}</div>`).join('');
   if(cur.writtenTotal&&cur.writtenTotal!==total) w+=`<div class="note">${cur.src==='qr'?'客人手機上顯示':'客人寫的總計是'} <b>${money(cur.writtenTotal)}</b> 元，和計算結果不同（以櫃檯價格為準），請確認。</div>`;
+  const zero=cur.items.filter(l=>ITEM[l.id]&&!ITEM[l.id].price).map(l=>ITEM[l.id].name);
+  if(zero.length) w+=`<div class="note">${zero.map(esc).join('、')} 還沒設定價格（目前算 0 元），請到設定頁的菜單補上。</div>`;
   $('#rvWarn').innerHTML=w;
   const box=$('#rvItems');
   if(!cur.items.length){box.innerHTML='<p class="muted">還沒有品項，按「＋ 加品項」。</p>';show($('#rvLegend'),false);return}
@@ -564,20 +562,6 @@ $('#btnSave').onclick=async()=>{
 
 
 /* ========= 照片補畫店家修改 ========= */
-// 範本座標（以 1284×1806 的銅板麵店菜單圖為準）：每個品項數量格的中心
-const TPL={
- 'zbm-y':[359,550],'zbm-b':[456,550],'zbm-m':[553,550],'zbm-d':[651,550],
- 'ym-y':[359,623],'ym-b':[456,623],'ym-m':[553,623],'ym-d':[651,623],
- gm:[359,773],gbt:[359,846],gmf:[359,920],zjm:[359,993],sjm:[359,1066],
- gwt:[359,1224],lbt:[359,1297],zbrt:[359,1370],yrt:[359,1443],
- hjpc:[359,1601],hspc:[359,1675],hsxyg:[359,1748],
- cyjf:[790,773],dpzf:[790,846],ylf:[790,920],yrf:[790,993],lrf:[790,1066],bf:[790,1140],
- 'hbd-q':[790,1294],'hbd-b':[790,1367],xb:[790,1521],kl:[790,1594],ljj:[790,1748],
- ld:[1201,773],hd:[1201,840],mx:[1201,907],tbl:[1201,974],dg:[1201,1041],txd:[1201,1109],ydf:[1201,1176],
- yms:[1201,1243],xbg:[1201,1311],tlb:[1201,1378],tqc:[1201,1445],zbr:[1201,1512],cyjt:[1201,1580]
-};
-const TPL_ANCHOR={qr:[730,338],lucai:[1067,709],liangban:[226,1537],zongji:[1067,1701]};
-const TPL_TOTAL=[1095,1701];
 function solve(A,b){const n=b.length;A=A.map((r,i)=>[...r,b[i]]);
   for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;[A[c],A[p]]=[A[p],A[c]];
     if(Math.abs(A[c][c])<1e-9)return null;
@@ -590,7 +574,7 @@ function makeMap(src,dst){
     const h=solve(A,b);if(!h)return null;return p=>[h[0]*p[0]+h[1]*p[1]+h[2],h[3]*p[0]+h[4]*p[1]+h[5]]}
   return null;}
 function photoMap(anchors,W,H){
-  if(!anchors)return null;const src=[],dst=[];
+  if(!anchors||typeof TPL_ANCHOR==='undefined')return null;const src=[],dst=[];
   for(const k of Object.keys(TPL_ANCHOR)){const a=anchors[k];if(!Array.isArray(a)||a.length!==4||a[2]<=a[0]||a[3]<=a[1])continue;
     src.push(TPL_ANCHOR[k]);dst.push([(a[1]+a[3])/2000*W,(a[0]+a[2])/2000*H])}
   const f=makeMap(src,dst);if(!f)return null;
@@ -625,7 +609,7 @@ async function annotate(c,o){
   if(map){
     const {f,sc}=map;const s=sc;
     g.strokeStyle=BLUE;g.fillStyle=BLUE;g.lineWidth=Math.max(2,5*s);g.textAlign='center';g.textBaseline='middle';
-    for(const d of changes){const p=TPL[d.id];if(!p)continue;const [x,y]=f(p);
+    for(const d of changes){const p=(typeof TPL!=='undefined'&&TPL)[d.id];if(!p)continue;const [x,y]=f(p);
       const r=34*s;
       if(d.to===0){g.beginPath();g.moveTo(x-r,y-r*0.7);g.lineTo(x+r,y+r*0.7);g.moveTo(x+r,y-r*0.7);g.lineTo(x-r,y+r*0.7);g.stroke();continue}
       g.beginPath();g.ellipse(x,y,r*1.25,r*0.85,0,0,Math.PI*2);g.stroke();
@@ -848,7 +832,7 @@ document.querySelectorAll('.modeOpt').forEach(b=>b.onclick=()=>{LS.set('mode',b.
 document.querySelectorAll('#sMode button').forEach(b=>b.onclick=()=>{LS.set('mode',b.dataset.mode);applyMode()});
 
 /* ========= 客人點餐網址 / 列印 QR ========= */
-function orderUrl(t){return location.origin+location.pathname.replace(/[^/]*$/,'')+'order.html'+(t?'?t='+encodeURIComponent(t):'')}
+function orderUrl(t){const q=new URLSearchParams();if(SHOP)q.set('shop',SHOP);if(t)q.set('t',t);const qs=q.toString();return location.origin+location.pathname.replace(/[^/]*$/,'')+'order.html'+(qs?'?'+qs:'')}
 function qrImg(text,cell){const q=qrcode(0,'M');q.addData(text);q.make();return q.createImgTag(cell||6,8,'QR code')}
 function renderCustQr(){$('#custQr').innerHTML=qrImg(orderUrl(),6);$('#custUrl').textContent=orderUrl()}
 $('#btnPrintQr').onclick=()=>{
@@ -911,6 +895,7 @@ function checkHash(){
 }
 window.addEventListener('hashchange',checkHash);
 
+$('#shopName').textContent=SHOP_NAME;document.title='點單掃描・'+SHOP_NAME;
 applyMode();
 if(LS.get('mode',null)===null&&!/[#&]o=1\./.test(location.hash)){show($('nav'),false);gotoTab('mode')}
 checkHash();

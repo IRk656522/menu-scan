@@ -85,12 +85,15 @@ input{font:inherit;font-size:calc(19px*var(--k));padding:10px;border:1px solid v
   <button class="go" id="finish" disabled>完成點餐</button>
 </div>
 
-<script src="menu.js"></script>
+<script>
+var SHOP=(new URLSearchParams(location.search).get('shop')||'').replace(/[^\w-]/g,'');
+document.write('<script src="'+(SHOP?'shops/'+SHOP+'.js':'menu.js')+'"><\/script>');
+</script>
 <script src="lib/qrcode.js"></script>
 <script>
 'use strict';
 const $=s=>document.querySelector(s);
-const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const NS=SHOP?SHOP+':':'';const LS={get(k,d){try{const v=localStorage.getItem(NS+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(NS+k,JSON.stringify(v))}catch(e){}}};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LARGE=DEFAULT_LARGE_ADD;
 const ITEM={};for(const s of DEFAULT_MENU)for(const [id,name,price,large] of s.items)ITEM[id]={id,name,price,large:!!large};
@@ -110,7 +113,7 @@ function build(){
   $('#tabs').innerHTML=DEFAULT_MENU.map((s,i)=>`<button data-go="s${i}">${esc(s.sec)}</button>`).join('');
   $('#menu').innerHTML=DEFAULT_MENU.map((s,i)=>`<div class="sec" id="s${i}"><h2>${esc(s.sec)}</h2>${s.items.map(([id,name,price,large])=>`
     <div class="it" data-id="${id}">
-      <div class="nm">${esc(name)}<small>${price} 元</small></div>
+      <div class="nm">${esc(name)}<small>${price?price+' 元':'價格請洽櫃檯'}</small></div>
       <div class="ctl"><button class="q" data-a="-" data-l="0">−</button><span class="n" data-n="0">0</span><button class="q add" data-a="+" data-l="0">＋</button></div>
       ${large?`<div class="lg">加大 +${LARGE}：<button class="q" data-a="-" data-l="1">−</button><span class="n" data-n="1">0</span><button class="q add" data-a="+" data-l="1">＋</button></div>`:''}
     </div>`).join('')}</div>`).join('');
@@ -128,8 +131,8 @@ $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)document.getEleme
 // 訂單編碼成櫃檯網址（ASCII，櫃檯掃描或用相機開都可以）
 function payload(){
   const items=Object.entries(cart).map(([k,q])=>{const [id,l]=k.split('|');return id+'*'+q+(l==='1'?'L':'')}).join(',');
-  const base=location.href.replace(/order\.html.*$/,'').replace(/[?#].*$/,'');
-  return base+'#o=1.'+dine+'.'+encodeURIComponent(table.trim()||'-')+'.'+items+'.'+total();
+  const base=location.href.replace(/[?#].*$/,'').replace(/order\.html$/,'');
+  return base+(SHOP?'?shop='+SHOP:'')+'#o=1.'+dine+'.'+encodeURIComponent(table.trim()||'-')+'.'+items+'.'+total();
 }
 function showDone(){
   window.scrollTo(0,0);
