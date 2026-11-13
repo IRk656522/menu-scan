@@ -218,7 +218,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v18</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v19</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -368,6 +368,7 @@ async function onFile(input){
   const t0=Date.now(); const timer=setInterval(()=>$('#busyTime').textContent=((Date.now()-t0)/1000).toFixed(1)+' 秒',100);
   try{
     const r=await recognize(big.split(',')[1],key);
+    try{inkCheck(img,r)}catch(e){console.error(e)}
     openReview({...r,photo:big,thumb});
   }catch(e){
     console.error(e);
@@ -375,6 +376,39 @@ async function onFile(input){
   }finally{
     clearInterval(timer); show($('#scanBusy'),false);
   }
+}
+
+/* ========= 紅筆墨跡檢查（不靠 AI，補漏用）========= */
+// 只在照片比例跟菜單範本相同時使用；回傳每個品項格子附近的紅色像素數
+function inkScan(img){
+  if(typeof TPL==='undefined')return null;
+  const W=img.naturalWidth,H=img.naturalHeight;
+  if(Math.abs(W/H-1284/1806)>0.06)return null;
+  const cv=document.createElement('canvas');cv.width=1284;cv.height=1806;
+  const g=cv.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0,1284,1806);
+  const out={};
+  for(const id in TPL){const [cx,cy]=TPL[id];
+    const rc=cx>1000, x0=Math.max(0,cx-42),y0=Math.max(0,cy-(rc?32:38)),w=Math.min(1284-x0,112),h=rc?64:72;
+    const d=g.getImageData(x0,y0,w,h).data;let n=0;
+    for(let i=0;i<d.length;i+=4){const r=d[i],gg=d[i+1],b=d[i+2];if(r>150&&r-gg>70&&r-b>60)n++}
+    out[id]=n;
+  }
+  return out;
+}
+function inkCheck(img,r){
+  const ink=inkScan(img);if(!ink)return;
+  const TH=60;
+  const have=new Set(r.items.map(l=>l.id));
+  for(const id in ink){
+    if(ink[id]>=TH&&!have.has(id)&&ITEM[id]){
+      const [cx,cy]=TPL[id];const nb=Object.keys(TPL).filter(k=>k!==id&&TPL[k][0]===cx&&Math.abs(TPL[k][1]-cy)<80).map(k=>ink[k]);
+      const weak=nb.some(v=>v>ink[id]*2);
+      r.items.push({id,qty:1,large:false,unsure:true,note:weak?'可能是隔壁格的筆跡':'偵測到筆跡',box:null});
+    }
+  }
+  for(const l of r.items){if(TPL[l.id]&&ink[l.id]<TH/3&&!l.unsure){l.unsure=true;l.note=l.note||'沒看到筆跡'}}
+  r.inkAdded=Object.keys(ink).filter(id=>ink[id]>=TH&&!have.has(id)).length;
+  if(r.inkAdded)r.warn.push(`AI 漏了 ${r.inkAdded} 格有筆跡的品項，已幫你加上（黃色），請確認數量。`);
 }
 
 /* ========= Gemini 辨識 ========= */
@@ -394,7 +428,7 @@ ${list.join('\n')}
 4. 方格旁邊寫「大」代表該品項加大，large=true（數量照寫的數字/正字）。
 5. note 只放客人寫的文字備註（例如「白麵」），最多 10 個字；不要寫你的判斷過程。
 6. 只要有任何不確定（筆畫數看不清、位置介於兩列之間、可能是汙漬），uncertain=true，note 用 6 個字以內說明（例如「筆畫在格外」）。
-7. 沒寫東西的方格不要回傳。
+7. 寧可多報、不要漏報：方格裡或方格附近（左右、上下緣）只要有任何筆跡，都要回傳那個品項；看不清楚就 uncertain=true。完全空白的方格才不要回傳。
 8. 「外帶」框或「內用」框有被打勾或寫字就是那一種；內用框裡的數字是桌號。都看不出來 dine 填「未知」。桌號沒寫就填空字串。
 9. 若「總計」框有寫金額，填在 written_total，否則填 0。
 每個 item 都要附 box：框住「那一列品名＋客人寫的筆跡」的範圍，格式 [ymin,xmin,ymax,xmax]（0～1000 正規化座標），讓店家核對你讀到哪裡。
