@@ -146,6 +146,7 @@ td.r,th.r{text-align:right}
           <input id="rvTable" placeholder="桌號" inputmode="numeric" style="width:90px">
         </div>
         <div id="rvWarn"></div>
+        <details id="rvRaw" class="muted hidden" style="margin-top:6px"><summary>AI 原始結果（除錯用）</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:240px;overflow:auto"></pre></details>
       </div>
       <div class="card">
         <div class="row" style="justify-content:space-between"><h2 style="margin:0">品項</h2>
@@ -194,6 +195,11 @@ td.r,th.r{text-align:right}
 
   <section id="tab-settings" class="hidden">
     <div class="card">
+      <h2>辨識模式（紙本拍照）</h2>
+      <div class="seg" id="sAcc" style="width:100%;margin-bottom:6px"><button data-acc="1" class="grow">🎯 準確（推薦）</button><button data-acc="0" class="grow">⚡ 快速</button></div>
+      <p class="muted">準確：AI 會仔細檢查每一欄，大約 10～20 秒。快速：3～8 秒，但比較容易漏掉品項。</p>
+    </div>
+    <div class="card">
       <h2>點單方式</h2>
       <div class="seg" id="sMode" style="width:100%"><button data-mode="qr" class="grow">📱 手機點餐</button><button data-mode="photo" class="grow">📷 紙本拍照</button><button data-mode="both" class="grow">兩種都用</button></div>
     </div>
@@ -212,7 +218,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v16</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v17</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -414,7 +420,7 @@ async function fetchT(url,opt,ms){
 const FALLBACK=['gemini-3.8-flash','gemini-3.6-flash','gemini-3.5-flash-lite','gemini-3.1-flash-lite'];
 async function callOne(model,body,key,ms,noThink){
   const gc={...(body.generationConfig||{})};
-  if(!noThink) gc.thinkingConfig=/gemini-2/.test(model)?{thinkingBudget:0}:{thinkingLevel:'low'};
+  if(!noThink&&!LS.get('accurate',true)) gc.thinkingConfig=/gemini-2/.test(model)?{thinkingBudget:0}:{thinkingLevel:'low'};
   try{ return await callRaw(model,{...body,generationConfig:gc},key,ms) }
   catch(e){
     if(e.badThinking&&!noThink) return await callOne(model,body,key,ms,true);
@@ -474,8 +480,9 @@ async function recognize(b64,key){
   const j=await callGemini({
     contents:[{parts:[{text:buildPrompt()},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],
     generationConfig:{temperature:0,responseMimeType:'application/json',responseSchema:SCHEMA}
-  },key,20000,m=>{const el=$('#busyModel');if(el)el.textContent='使用 '+m});
-  const txt=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');
+  },key,LS.get('accurate',true)?45000:20000,m=>{const el=$('#busyModel');if(el)el.textContent='使用 '+m});
+  const txt=(j.candidates?.[0]?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');
+  window._lastRaw=txt;
   let o; try{o=JSON.parse(txt.replace(/^```(json)?|```$/g,'').trim())}catch(e){throw new Error('辨識結果格式錯誤')}
   const warn=[]; const items=[];
   for(const x of o.items||[]){
@@ -505,6 +512,7 @@ function openReview(o){
   show($('#scanStart'),false); show($('#review'),true);
   $('#rvTable').value=cur.table||'';
   cur._img=null;
+  if(cur.fromAI&&window._lastRaw){show($('#rvRaw'),true);$('#rvRaw pre').textContent=window._lastRaw;window._lastRaw=''}else show($('#rvRaw'),false);
   if(cur.photo){const im=new Image();im.onload=()=>{if(cur&&cur.photo===o.photo){cur._img=im;drawReviewPhoto()}};im.src=cur.photo;show($('#photoCard'),true)}else show($('#photoCard'),false);
   renderReview();
   window.scrollTo(0,0);
@@ -538,7 +546,16 @@ function tplBox(id,W,H,anchors){
   const a=f(pts[0]),b=f(pts[1]);
   return [a[1]/H*1000,a[0]/W*1000,b[1]/H*1000,b[0]/W*1000];
 }
-function fillBoxes(c,W,H){for(const a of c.ai||[])if(!a.box){a.box=tplBox(a.id,W,H,c.anchors);a.guess=!!a.box}}
+function fillBoxes(c,W,H){
+  if(c._filled===W+'x'+H)return; c._filled=W+'x'+H;
+  for(const a of c.ai||[]){
+    const tb=tplBox(a.id,W,H,c.anchors);
+    const ok=a.box&&a.box.every(v=>v>=0&&v<=1000)&&a.box[2]-a.box[0]<300&&a.box[3]-a.box[1]<700;
+    let use=ok?a.box:null;
+    if(use&&tb){const dy=((use[0]+use[2])-(tb[0]+tb[2]))/2,dx=((use[1]+use[3])-(tb[1]+tb[3]))/2;if(Math.hypot(dx,dy)>60)use=null}
+    a.box=use||tb;
+  }
+}
 function drawReviewPhoto(){
   const cv=$('#rvPhoto');if(!cur||!cur._img)return;
   const im=cur._img;cv.width=im.naturalWidth;cv.height=im.naturalHeight;
@@ -862,7 +879,9 @@ document.querySelectorAll('[data-zoom]').forEach(b=>b.onclick=()=>setFont(LS.get
 applyFont(LS.get('fontK',1));
 
 /* ========= 點單方式 ========= */
-function applyMode(){
+function applyAcc(){const a=LS.get('accurate',true);document.querySelectorAll('#sAcc button').forEach(b=>b.classList.toggle('on',(b.dataset.acc==='1')===a))}
+document.querySelectorAll('#sAcc button').forEach(b=>b.onclick=()=>{LS.set('accurate',b.dataset.acc==='1');applyAcc()});
+function applyMode(){applyAcc();
   const m=LS.get('mode','both');
   document.querySelectorAll('.m-qr').forEach(e=>e.classList.toggle('hidden',m==='photo'));
   document.querySelectorAll('.m-photo').forEach(e=>e.classList.toggle('hidden',m==='qr'));
