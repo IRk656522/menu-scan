@@ -158,7 +158,7 @@ td.r,th.r{text-align:right}
         <button class="ok grow big" id="btnSave" style="padding:16px">確認結帳</button>
       </div>
      </div>
-      <div class="card rvSide" id="photoCard"><h2>點單照片</h2><img id="rvPhoto" class="photo" alt=""></div>
+      <div class="card rvSide" id="photoCard"><h2>點單照片</h2><canvas id="rvPhoto" class="photo"></canvas><p class="muted">綠框＝認到的品項、橘框＝不確定、藍框＝你改過數量、灰色叉叉＝你取消的。沒被框到的筆跡就是漏掉的，請按「＋ 加品項」補上。</p></div>
     </div>
   </section>
 
@@ -212,7 +212,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v13</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v14</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -391,15 +391,17 @@ ${list.join('\n')}
 7. 沒寫東西的方格不要回傳。
 8. 「外帶」框或「內用」框有被打勾或寫字就是那一種；內用框裡的數字是桌號。都看不出來 dine 填「未知」。桌號沒寫就填空字串。
 9. 若「總計」框有寫金額，填在 written_total，否則填 0。
-${typeof ANCHOR_HINT!=="undefined"?ANCHOR_HINT:""}只回傳 JSON，格式：{"dine":"內用|外帶|未知","table":"","written_total":0,"items":[{"id":"代碼","qty":1,"large":false,"uncertain":false,"note":""}],"anchors":{"qr":[0,0,0,0],"lucai":[0,0,0,0],"liangban":[0,0,0,0],"zongji":[0,0,0,0]}}`;
+每個 item 都要附 box：框住「那一列品名＋客人寫的筆跡」的範圍，格式 [ymin,xmin,ymax,xmax]（0～1000 正規化座標），讓店家核對你讀到哪裡。
+請從左到右、由上到下把整張每一欄都檢查完，左欄最容易漏看。
+${typeof ANCHOR_HINT!=="undefined"?ANCHOR_HINT:""}只回傳 JSON，格式：{"dine":"內用|外帶|未知","table":"","written_total":0,"items":[{"id":"代碼","qty":1,"large":false,"uncertain":false,"note":"","box":[0,0,0,0]}],"anchors":{"qr":[0,0,0,0],"lucai":[0,0,0,0],"liangban":[0,0,0,0],"zongji":[0,0,0,0]}}`;
 }
 const SCHEMA={type:'OBJECT',properties:{
   dine:{type:'STRING',enum:['內用','外帶','未知']},
   table:{type:'STRING'},
   written_total:{type:'INTEGER'},
   items:{type:'ARRAY',items:{type:'OBJECT',properties:{
-    id:{type:'STRING'},qty:{type:'INTEGER'},large:{type:'BOOLEAN'},uncertain:{type:'BOOLEAN'},note:{type:'STRING'}
-  },required:['id','qty','large','uncertain']}},
+    id:{type:'STRING'},qty:{type:'INTEGER'},large:{type:'BOOLEAN'},uncertain:{type:'BOOLEAN'},note:{type:'STRING'},
+    box:{type:'ARRAY',items:{type:'INTEGER'}}},required:['id','qty','large','uncertain']}},
   anchors:{type:'OBJECT',properties:{qr:{type:'ARRAY',items:{type:'INTEGER'}},lucai:{type:'ARRAY',items:{type:'INTEGER'}},liangban:{type:'ARRAY',items:{type:'INTEGER'}},zongji:{type:'ARRAY',items:{type:'INTEGER'}}}}
 },required:['dine','table','items','written_total']};
 
@@ -480,7 +482,8 @@ async function recognize(b64,key){
     const m=ITEM[x.id];
     if(!m){warn.push('有一格對不到菜單（'+x.id+'），請檢查照片');continue}
     const qty=Math.max(1,Math.min(99,parseInt(x.qty)||1));
-    items.push({id:m.id,qty,large:!!x.large&&m.large,unsure:!!x.uncertain,note:x.note||''});
+    const bx=Array.isArray(x.box)&&x.box.length===4&&x.box[2]>x.box[0]&&x.box[3]>x.box[1]?x.box.map(Number):null;
+    items.push({id:m.id,qty,large:!!x.large&&m.large,unsure:!!x.uncertain,note:x.note||'',box:bx});
   }
   return {dine:o.dine==='外帶'?'外帶':'內用',table:o.table||'',items,writtenTotal:+o.written_total||0,warn,anchors:o.anchors||null,fromAI:true};
 }
@@ -496,14 +499,42 @@ function openReview(o){
   const merged=[];
   for(const l of cur.items){const f=merged.find(x=>x.id===l.id&&x.large===l.large);if(f){f.qty+=l.qty;f.unsure=f.unsure||l.unsure;if(l.note)f.note=(f.note?f.note+'；':'')+l.note}else merged.push({...l})}
   cur.items=merged;
-  cur.ai=cur.fromAI?merged.map(l=>({id:l.id,large:l.large,qty:l.qty})):[];
+  cur.ai=cur.fromAI?merged.map(l=>({id:l.id,large:l.large,qty:l.qty,box:l.box,unsure:l.unsure})):[];
   show($('#scanStart'),false); show($('#review'),true);
   $('#rvTable').value=cur.table||'';
-  if(cur.photo){$('#rvPhoto').src=cur.photo;show($('#photoCard'),true)}else show($('#photoCard'),false);
+  cur._img=null;
+  if(cur.photo){const im=new Image();im.onload=()=>{if(cur&&cur.photo===o.photo){cur._img=im;drawReviewPhoto()}};im.src=cur.photo;show($('#photoCard'),true)}else show($('#photoCard'),false);
   renderReview();
   window.scrollTo(0,0);
 }
+// 依 AI 原始辨識畫框：綠＝照收、橘＝不確定、藍＝店家改數量、灰＋叉＝店家取消
+function drawBoxes(g,W,H,ai,items){
+  const lw=Math.max(3,W*0.005),fs=Math.round(W*0.022);
+  g.font=`bold ${fs}px sans-serif`;g.textBaseline='bottom';g.textAlign='left';
+  for(const a of ai||[]){if(!a.box)continue;const m=ITEM[a.id];if(!m)continue;
+    const now=items.filter(l=>l.id===a.id).reduce((t,l)=>t+l.qty,0);
+    const cur1=items.find(l=>l.id===a.id);
+    const [y0,x0,y1,x1]=a.box,x=x0/1000*W,y=y0/1000*H,w=(x1-x0)/1000*W,h=(y1-y0)/1000*H;
+    let c,t;
+    if(now===0){c='#7a7a7a';t=m.name+' 已取消'}
+    else if(now!==a.qty){c='#1556d6';t=m.name+' '+a.qty+'→'+now}
+    else{c=(cur1&&cur1.unsure)?'#f08c00':'#12a150';t=m.name+((cur1&&cur1.large)?'(大)':'')+' ×'+now}
+    g.strokeStyle=c;g.lineWidth=lw;g.setLineDash(now===0?[lw*3,lw*2]:[]);g.strokeRect(x,y,w,h);g.setLineDash([]);
+    if(now===0){g.globalAlpha=.25;g.fillStyle=c;g.fillRect(x,y,w,h);g.globalAlpha=1;
+      g.beginPath();g.moveTo(x,y);g.lineTo(x+w,y+h);g.moveTo(x+w,y);g.lineTo(x,y+h);g.stroke()}
+    const tw=g.measureText(t).width+fs*0.6, ty=y>fs*1.3?y:y+h+fs*1.3;
+    g.fillStyle=c;g.fillRect(x,ty-fs*1.25,tw,fs*1.25);g.fillStyle='#fff';g.fillText(t,x+fs*0.3,ty-fs*0.12);
+  }
+}
+function drawReviewPhoto(){
+  const cv=$('#rvPhoto');if(!cur||!cur._img)return;
+  const im=cur._img;cv.width=im.naturalWidth;cv.height=im.naturalHeight;
+  const g=cv.getContext('2d');g.drawImage(im,0,0);
+  // 只框 AI 認到、而且還在清單裡的
+  drawBoxes(g,cv.width,cv.height,cur.ai,cur.items);
+}
 function renderReview(){
+  drawReviewPhoto();
   document.querySelectorAll('#rvDine button').forEach(b=>b.classList.toggle('on',b.dataset.v===cur.dine));
   show($('#rvTable'),cur.dine==='內用');
   const total=orderTotal(cur);
@@ -604,6 +635,7 @@ async function annotate(c,o){
   const panelH=pad*2+fs*1.4*(1+Math.max(1,lines.length));
   const cv=document.createElement('canvas');cv.width=W;cv.height=H+panelH;
   const g=cv.getContext('2d');g.drawImage(img,0,0);
+  drawBoxes(g,W,H,c.ai,c.items);
   const BLUE='#1556d6';
   const map=photoMap(c.anchors,W,H);
   if(map){
