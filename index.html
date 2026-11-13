@@ -212,7 +212,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v14</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v15</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -482,7 +482,8 @@ async function recognize(b64,key){
     const m=ITEM[x.id];
     if(!m){warn.push('有一格對不到菜單（'+x.id+'），請檢查照片');continue}
     const qty=Math.max(1,Math.min(99,parseInt(x.qty)||1));
-    const bx=Array.isArray(x.box)&&x.box.length===4&&x.box[2]>x.box[0]&&x.box[3]>x.box[1]?x.box.map(Number):null;
+    const rb=x.box||x.box_2d||x.bbox;
+    const bx=Array.isArray(rb)&&rb.length===4&&rb[2]>rb[0]&&rb[3]>rb[1]?rb.map(Number):null;
     items.push({id:m.id,qty,large:!!x.large&&m.large,unsure:!!x.uncertain,note:x.note||'',box:bx});
   }
   return {dine:o.dine==='外帶'?'外帶':'內用',table:o.table||'',items,writtenTotal:+o.written_total||0,warn,anchors:o.anchors||null,fromAI:true};
@@ -526,9 +527,21 @@ function drawBoxes(g,W,H,ai,items){
     g.fillStyle=c;g.fillRect(x,ty-fs*1.25,tw,fs*1.25);g.fillStyle='#fff';g.fillText(t,x+fs*0.3,ty-fs*0.12);
   }
 }
+// AI 沒給位置時：用菜單範本的格子位置推算（有定位點就對位，沒有就假設整張就是菜單）
+function tplBox(id,W,H,anchors){
+  if(typeof TPL==='undefined'||!TPL[id])return null;
+  const [cx,cy]=TPL[id];
+  const x0=cx<500?40:cx<1000?455:885, pts=[[x0,cy-34],[cx+45,cy+34]];
+  let f=null; const pm=photoMap(anchors,W,H); if(pm)f=pm.f;
+  if(!f){const r=W/H, tr=1284/1806; if(Math.abs(r-tr)>0.08)return null; f=p=>[p[0]/1284*W,p[1]/1806*H]}
+  const a=f(pts[0]),b=f(pts[1]);
+  return [a[1]/H*1000,a[0]/W*1000,b[1]/H*1000,b[0]/W*1000];
+}
+function fillBoxes(c,W,H){for(const a of c.ai||[])if(!a.box){a.box=tplBox(a.id,W,H,c.anchors);a.guess=!!a.box}}
 function drawReviewPhoto(){
   const cv=$('#rvPhoto');if(!cur||!cur._img)return;
   const im=cur._img;cv.width=im.naturalWidth;cv.height=im.naturalHeight;
+  fillBoxes(cur,cv.width,cv.height);
   const g=cv.getContext('2d');g.drawImage(im,0,0);
   // 只框 AI 認到、而且還在清單裡的
   drawBoxes(g,cv.width,cv.height,cur.ai,cur.items);
@@ -635,7 +648,7 @@ async function annotate(c,o){
   const panelH=pad*2+fs*1.4*(1+Math.max(1,lines.length));
   const cv=document.createElement('canvas');cv.width=W;cv.height=H+panelH;
   const g=cv.getContext('2d');g.drawImage(img,0,0);
-  drawBoxes(g,W,H,c.ai,c.items);
+  fillBoxes(c,W,H);drawBoxes(g,W,H,c.ai,c.items);
   const BLUE='#1556d6';
   const map=photoMap(c.anchors,W,H);
   if(map){
