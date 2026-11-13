@@ -12,6 +12,7 @@
 <title>點單掃描・銅板麵店</title>
 <style>
 :root{
+  --k:1;
   --bg:#faf6f1; --card:#fff; --ink:#3b2416; --muted:#8a7565; --line:#eadfd4;
   --brand:#7a3e1d; --brand2:#a85a2a; --ok:#2f7d4f; --warn:#fff3c4; --warnline:#e6c34a; --bad:#c0392b;
 }
@@ -40,22 +41,24 @@ nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid 
 nav button{flex:1;background:none;border-radius:0;padding:12px 4px;color:var(--muted);font-size:14px}
 nav button.on{color:var(--brand);font-weight:800}
 .hidden{display:none!important}
-.total{font-size:56px;font-weight:800;color:var(--brand);text-align:center;line-height:1.1}
+.total{font-size:calc(56px*var(--k));font-weight:800;color:var(--brand);text-align:center;line-height:1.1}
 .total small{font-size:16px;color:var(--muted);font-weight:500;display:block}
 .meta{display:flex;gap:8px;margin:10px 0}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .seg button{border-radius:0;background:#fff;padding:9px 14px;font-weight:600}
 .seg button.on{background:var(--brand);color:#fff}
-.items .it{display:grid;grid-template-columns:1fr auto;grid-template-areas:"nm sub" "info ctl";gap:6px 10px;align-items:center;padding:14px 8px;border-bottom:1px solid var(--line)}
-.items .it.unsure{background:var(--warn);border-left:5px solid var(--warnline);border-radius:10px}
-.it .nm{grid-area:nm;font-size:24px;font-weight:800;line-height:1.25}
-.it .info{grid-area:info;font-size:16px;color:var(--muted)}
-.it .sub{grid-area:sub;font-size:26px;font-weight:800;color:var(--brand);text-align:right}
-.it .ctl{grid-area:ctl;display:flex;align-items:center;gap:10px}
-.qty{display:flex;align-items:center;gap:6px}
-.qty button{width:52px;height:52px;padding:0;font-size:28px;font-weight:700}
-.qty .n{min-width:40px;text-align:center;font-weight:900;font-size:32px}
-.dabtn{height:52px;min-width:52px;padding:0 10px;font-size:20px;font-weight:800;border-radius:12px;background:#fff;border:2px solid var(--line)}
+.items .it{display:flex;flex-direction:column;gap:calc(6px*var(--k));padding:calc(14px*var(--k)) calc(8px*var(--k));border-bottom:1px solid var(--line)}
+.it .r1,.it .r2{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.it .nm{flex:1;min-width:0}
+.items .it.unsure{background:var(--warn);border-left:calc(5px*var(--k)) solid var(--warnline);border-radius:calc(10px*var(--k))}
+.it .nm{font-size:calc(24px*var(--k));font-weight:800;line-height:1.25}
+.it .info{font-size:calc(16px*var(--k));color:var(--muted)}
+.it .sub{font-size:calc(26px*var(--k));font-weight:800;color:var(--brand);text-align:right}
+.it .ctl{margin-left:auto;display:flex;align-items:center;gap:calc(10px*var(--k))}
+.qty{display:flex;align-items:center;gap:calc(6px*var(--k))}
+.qty button{width:calc(52px*var(--k));height:calc(52px*var(--k));padding:0;font-size:calc(28px*var(--k));font-weight:700}
+.qty .n{min-width:calc(40px*var(--k));text-align:center;font-weight:900;font-size:calc(32px*var(--k))}
+.dabtn{height:calc(52px*var(--k));min-width:calc(52px*var(--k));padding:0 calc(10px*var(--k));font-size:calc(20px*var(--k));font-weight:800;border-radius:calc(12px*var(--k));background:#fff;border:calc(2px*var(--k)) solid var(--line)}
 .dabtn.on{background:var(--brand2);color:#fff;border-color:var(--brand2)}
 .photo{width:100%;border-radius:10px;border:1px solid var(--line);margin-top:8px}
 .spinner{width:42px;height:42px;border:4px solid #e9d9c9;border-top-color:var(--brand);border-radius:50%;animation:sp 0.8s linear infinite;margin:20px auto}
@@ -152,7 +155,7 @@ td.r,th.r{text-align:right}
   <!-- 設定 -->
   <section id="tab-settings" class="hidden">
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v8</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v9</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -165,6 +168,13 @@ td.r,th.r{text-align:right}
       <button class="ghost" id="btnAutoPick" style="width:100%;margin-top:8px">🔍 自動找一個能用的模型</button>
       <p id="testResult" style="font-size:14px;margin:8px 0 0"></p>
       <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="sKeepPhoto" style="width:auto"> 保存點單照片（店家修改會用藍筆補畫上去）</label>
+    </div>
+    <div class="card">
+      <h2>結帳畫面字體大小</h2>
+      <div class="seg" id="sFont" style="width:100%">
+        <button data-k="0.75" class="grow">小</button><button data-k="1" class="grow">中</button><button data-k="1.2" class="grow">大</button><button data-k="1.4" class="grow">特大</button>
+      </div>
+      <p class="muted">品項、數量、金額會跟著變大變小。</p>
     </div>
     <div class="card">
       <h2>資料備份</h2>
@@ -470,13 +480,13 @@ function renderReview(){
   box.innerHTML=cur.items.map((l,i)=>{
     const m=ITEM[l.id];
     return `<div class="it ${l.unsure?'unsure':''}">
-      <div class="nm">${esc(m.name)}${l.large?' (大)':''}</div>
-      <div class="sub">$${money(lineTotal(l))}</div>
-      <div class="info">單價 ${m.price}${l.large?' +'+LARGE_ADD:''}${l.note?'<br>'+esc(l.note):''}</div>
+      <div class="r1"><div class="nm">${esc(m.name)}${l.large?' (大)':''}</div>
+      <div class="sub">$${money(lineTotal(l))}</div></div>
+      <div class="r2"><div class="info">單價 ${m.price}${l.large?' +'+LARGE_ADD:''}${l.note?'<br>'+esc(l.note):''}</div>
       <div class="ctl">
         ${m.large?`<button class="dabtn ${l.large?'on':''}" data-a="large" data-i="${i}">大</button>`:''}
         <div class="qty"><button data-a="dec" data-i="${i}">−</button><span class="n">${l.qty}</span><button data-a="inc" data-i="${i}">＋</button></div>
-      </div>
+      </div></div>
     </div>`}).join('');
 }
 $('#rvItems').onclick=e=>{
@@ -771,6 +781,9 @@ $('#fileRestore').onchange=async e=>{
   }catch(err){alert('還原失敗：'+err.message)}
 };
 
+function applyFont(k){document.documentElement.style.setProperty('--k',k);document.querySelectorAll('#sFont button').forEach(b=>b.classList.toggle('on',+b.dataset.k===+k))}
+document.querySelectorAll('#sFont button').forEach(b=>b.onclick=()=>{LS.set('fontK',+b.dataset.k);applyFont(+b.dataset.k)});
+applyFont(LS.get('fontK',1));
 updateKeyHint();updateTodaySum();
 </script>
 </body>
