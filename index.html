@@ -164,6 +164,7 @@ td.r,th.r{text-align:right}
         <button class="primary grow" id="btnSaveKey">儲存</button>
         <button class="ghost" id="btnTestKey">測試連線</button>
       </div>
+      <p id="testResult" style="font-size:14px;margin:8px 0 0"></p>
       <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="sKeepPhoto" style="width:auto"> 保存點單照片（縮圖，會佔手機空間）</label>
     </div>
     <div class="card">
@@ -354,10 +355,16 @@ const SCHEMA={type:'OBJECT',properties:{
   },required:['id','qty','large','uncertain']}}
 },required:['dine','table','items','written_total']};
 
-async function callGemini(body,key){
+async function fetchT(url,opt,ms){
+  const ac=new AbortController();const t=setTimeout(()=>ac.abort(),ms);
+  try{return await fetch(url,{...opt,signal:ac.signal})}
+  catch(e){if(e.name==='AbortError')throw new Error('等太久沒回應（'+ms/1000+' 秒），請檢查網路或換模型');throw new Error('連不上 Google：'+e.message)}
+  finally{clearTimeout(t)}
+}
+async function callGemini(body,key,ms=45000){
   const model=LS.get('model','gemini-3.8-flash');
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
-    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)});
+  const r=await fetchT(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)},ms);
   const j=await r.json().catch(()=>({}));
   if(!r.ok){
     const m=j.error&&j.error.message||('HTTP '+r.status);
@@ -530,9 +537,28 @@ $('#btnSaveKey').onclick=()=>{LS.set('apiKey',$('#sKey').value.trim());LS.set('m
 $('#sKeepPhoto').onchange=e=>LS.set('keepPhoto',e.target.checked);
 $('#btnTestKey').onclick=async()=>{
   LS.set('apiKey',$('#sKey').value.trim());LS.set('model',$('#sModel').value.trim()||'gemini-3.8-flash');
-  const b=$('#btnTestKey');b.disabled=true;b.textContent='測試中…';
-  try{await callGemini({contents:[{parts:[{text:'回覆 OK'}]}]},$('#sKey').value.trim());alert('連線成功 ✅')}
-  catch(e){alert('失敗：'+e.message)}
+  const b=$('#btnTestKey'),out=$('#testResult');b.disabled=true;b.textContent='測試中…';
+  const key=$('#sKey').value.trim();let model=LS.get('model','gemini-3.8-flash');
+  const say=h=>out.innerHTML=h;
+  try{
+    if(!key)throw new Error('還沒貼 API Key');
+    say('① 檢查金鑰、讀取可用模型…');
+    const r=await fetchT('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',{headers:{'x-goog-api-key':key}},15000);
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(r.status===400||r.status===403?'API Key 不正確或沒有權限':(j.error&&j.error.message||'HTTP '+r.status));
+    const names=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,''));
+    const flash=names.filter(n=>/flash/.test(n)&&!/(tts|audio|live|image|embed)/.test(n));
+    $('#modelList').innerHTML=(flash.length?flash:names).map(n=>`<option value="${esc(n)}">`).join('');
+    if(!names.includes(model)){
+      const pick=flash.find(n=>!/preview|exp/.test(n)&&!/lite/.test(n))||flash[0]||names[0];
+      if(!pick)throw new Error('這個金鑰沒有可用的模型');
+      model=pick;LS.set('model',model);$('#sModel').value=model;
+    }
+    say('② 金鑰正確，測試模型 '+esc(model)+'…');
+    const t0=Date.now();
+    await callGemini({contents:[{parts:[{text:'回覆 OK'}]}]},key,25000);
+    say(`✅ 連線成功！模型：<b>${esc(model)}</b>（${((Date.now()-t0)/1000).toFixed(1)} 秒）`);
+  }catch(e){say('❌ '+esc(e.message))}
   finally{b.disabled=false;b.textContent='測試連線'}
 };
 $('#btnSaveMenu').onclick=()=>{
