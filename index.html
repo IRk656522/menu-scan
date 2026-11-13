@@ -103,6 +103,7 @@ td.r,th.r{text-align:right}
       <div class="spinner"></div>
       <div>辨識中…</div>
       <div class="muted" id="busyTime"></div>
+      <div class="muted" id="busyModel"></div>
     </div>
 
     <div id="review" class="hidden">
@@ -361,26 +362,45 @@ async function fetchT(url,opt,ms){
   catch(e){if(e.name==='AbortError')throw new Error('等太久沒回應（'+ms/1000+' 秒），請檢查網路或換模型');throw new Error('連不上 Google：'+e.message)}
   finally{clearTimeout(t)}
 }
-async function callGemini(body,key,ms=45000){
-  const model=LS.get('model','gemini-3.8-flash');
+const FALLBACK=['gemini-3.8-flash','gemini-3.6-flash','gemini-3.5-flash-lite','gemini-3.1-flash-lite'];
+async function callOne(model,body,key,ms){
   const r=await fetchT(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
     method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)},ms);
   const j=await r.json().catch(()=>({}));
-  if(!r.ok){
-    const m=j.error&&j.error.message||('HTTP '+r.status);
-    if(r.status===429) throw new Error('免費額度用完或太頻繁，稍等一下再試');
-    if(r.status===400&&/API key/i.test(m)) throw new Error('API Key 不正確');
-    if(r.status===404) throw new Error('找不到模型「'+model+'」，請到設定換一個');
-    throw new Error(m);
+  if(r.ok) return j;
+  const m=j.error&&j.error.message||('HTTP '+r.status);
+  const e=new Error(m);
+  e.busy = r.status===503 || r.status===500 || /high demand|overloaded|unavailable/i.test(m);
+  e.quota = r.status===429;
+  e.missing = r.status===404;
+  if(r.status===400&&/API key/i.test(m)) e.message='API Key 不正確';
+  throw e;
+}
+// 依序嘗試：設定的模型 → 其他可用的 flash 模型；遇到塞車/額度用完/找不到就換下一個
+async function callGemini(body,key,ms=45000,onTry){
+  const main=LS.get('model','gemini-3.8-flash');
+  const known=LS.get('models',null);
+  let list=[main,...FALLBACK,...(known||[])].filter((m,i,a)=>a.indexOf(m)===i);
+  if(known) list=list.filter(m=>m===main||known.includes(m));
+  let last;
+  for(const m of list){
+    if(onTry) onTry(m);
+    try{ const j=await callOne(m,body,key,ms); j._model=m; return j }
+    catch(e){
+      last=e;
+      if(!(e.busy||e.quota||e.missing)) throw e;
+    }
   }
-  return j;
+  if(last&&last.quota) throw new Error('免費額度用完或太頻繁，稍等一下再試');
+  if(last&&last.busy) throw new Error('Google 目前所有模型都很忙，過一下再試，或先手動點單');
+  throw last||new Error('沒有可用的模型');
 }
 
 async function recognize(b64,key){
   const j=await callGemini({
     contents:[{parts:[{text:buildPrompt()},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],
     generationConfig:{temperature:0,responseMimeType:'application/json',responseSchema:SCHEMA}
-  },key);
+  },key,25000,m=>{const el=$('#busyModel');if(el)el.textContent='使用 '+m});
   const txt=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');
   let o; try{o=JSON.parse(txt)}catch(e){throw new Error('辨識結果格式錯誤')}
   const warn=[]; const items=[];
@@ -548,6 +568,7 @@ $('#btnTestKey').onclick=async()=>{
     if(!r.ok)throw new Error(r.status===400||r.status===403?'API Key 不正確或沒有權限':(j.error&&j.error.message||'HTTP '+r.status));
     const names=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,''));
     const flash=names.filter(n=>/flash/.test(n)&&!/(tts|audio|live|image|embed)/.test(n));
+    LS.set('models',flash.length?flash:names);
     $('#modelList').innerHTML=(flash.length?flash:names).map(n=>`<option value="${esc(n)}">`).join('');
     if(!names.includes(model)){
       const pick=flash.find(n=>!/preview|exp/.test(n)&&!/lite/.test(n))||flash[0]||names[0];
@@ -556,8 +577,8 @@ $('#btnTestKey').onclick=async()=>{
     }
     say('② 金鑰正確，測試模型 '+esc(model)+'…');
     const t0=Date.now();
-    await callGemini({contents:[{parts:[{text:'回覆 OK'}]}]},key,25000);
-    say(`✅ 連線成功！模型：<b>${esc(model)}</b>（${((Date.now()-t0)/1000).toFixed(1)} 秒）`);
+    const tj=await callGemini({contents:[{parts:[{text:'回覆 OK'}]}]},key,25000,m=>say('② 金鑰正確，測試模型 '+esc(m)+'…'));
+    say(`✅ 連線成功！模型：<b>${esc(tj._model)}</b>${tj._model!==model?'（'+esc(model)+' 目前塞車，已自動改用備用模型）':''}（${((Date.now()-t0)/1000).toFixed(1)} 秒）`);
   }catch(e){say('❌ '+esc(e.message))}
   finally{b.disabled=false;b.textContent='測試連線'}
 };
