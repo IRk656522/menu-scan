@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#7a3e1d">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>手機點餐・銅板麵店</title>
+<style>
+:root{--bg:#faf6f1;--card:#fff;--ink:#3b2416;--muted:#8a7565;--line:#eadfd4;--brand:#7a3e1d;--brand2:#a85a2a;--ok:#2f7d4f;--k:1}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;-webkit-text-size-adjust:100%}
+body{padding-bottom:calc(96px*var(--k) + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;background:var(--brand);color:#fff;padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top));display:flex;justify-content:space-between;align-items:center;gap:8px}
+header b{font-size:19px}
+header button{background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:9px;padding:6px 10px;font:inherit;font-weight:700}
+main{max-width:720px;margin:0 auto;padding:12px}
+.tabs{position:sticky;top:calc(54px + env(safe-area-inset-top));z-index:4;background:var(--bg);display:flex;gap:6px;overflow-x:auto;padding:8px 0;-webkit-overflow-scrolling:touch}
+.tabs button{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:20px;padding:7px 13px;font:inherit;font-size:15px;color:var(--ink)}
+.sec{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 12px;margin-bottom:12px;scroll-margin-top:110px}
+.sec h2{font-size:calc(17px*var(--k));margin:8px 0 4px;color:var(--brand)}
+.it{display:flex;align-items:center;gap:8px;padding:calc(10px*var(--k)) 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.sec h2+.it{border-top:none}
+.it .nm{flex:1;min-width:0;font-size:calc(20px*var(--k));font-weight:700}
+.it .nm small{display:block;font-size:calc(15px*var(--k));color:var(--muted);font-weight:500}
+.it.has{background:#fff6ec}
+.ctl{display:flex;align-items:center;gap:6px;margin-left:auto}
+button{font:inherit;cursor:pointer}
+.q{width:calc(46px*var(--k));height:calc(46px*var(--k));border:none;border-radius:12px;background:#efe6dc;font-size:calc(26px*var(--k));font-weight:700;color:var(--ink);padding:0}
+.q.add{background:var(--brand);color:#fff}
+.n{min-width:calc(30px*var(--k));text-align:center;font-size:calc(26px*var(--k));font-weight:900}
+.lg{width:100%;display:flex;justify-content:flex-end;align-items:center;gap:6px;font-size:calc(15px*var(--k));color:var(--muted)}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:#fff;border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px}
+.bar .sum{flex:1;font-size:calc(15px*var(--k));color:var(--muted)}
+.bar .sum b{display:block;font-size:calc(28px*var(--k));color:var(--brand)}
+.go{background:var(--ok);color:#fff;border:none;border-radius:14px;padding:calc(14px*var(--k)) calc(22px*var(--k));font-size:calc(20px*var(--k));font-weight:800}
+.go:disabled{opacity:.4}
+.hidden{display:none!important}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.seg{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.seg button{flex:1;border:none;background:#fff;padding:12px;font-size:calc(19px*var(--k));font-weight:700;color:var(--ink)}
+.seg button.on{background:var(--brand);color:#fff}
+input{font:inherit;font-size:calc(19px*var(--k));padding:10px;border:1px solid var(--line);border-radius:12px;width:100%}
+.qrbox{text-align:center}
+.qrbox canvas,.qrbox img{width:min(78vw,340px);height:auto;image-rendering:pixelated;background:#fff;padding:10px;border-radius:12px;border:1px solid var(--line)}
+.big{font-size:calc(40px*var(--k));font-weight:900;color:var(--brand)}
+.list div{display:flex;justify-content:space-between;font-size:calc(19px*var(--k));padding:6px 0;border-bottom:1px dashed var(--line)}
+.muted{color:var(--muted);font-size:14px}
+.ghost{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-weight:700;color:var(--ink)}
+</style>
+</head>
+<body>
+<header><b id="title">銅板麵店・手機點餐</b>
+  <div><button id="zm">A−</button> <button id="zp">A＋</button></div></header>
+
+<main>
+  <section id="pick">
+    <div class="tabs" id="tabs"></div>
+    <div id="menu"></div>
+    <p class="muted" style="text-align:center">價格以櫃檯結帳為準</p>
+  </section>
+
+  <section id="done" class="hidden">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px">用餐方式</div>
+      <div class="seg" id="dine"><button data-v="i">內用</button><button data-v="o">外帶</button></div>
+      <div id="tableWrap" style="margin-top:10px"><input id="table" inputmode="numeric" placeholder="桌號（看桌上的號碼）" maxlength="6"></div>
+    </div>
+    <div class="card qrbox">
+      <div style="font-size:calc(19px*var(--k));font-weight:800">請拿這個畫面到櫃檯掃描結帳</div>
+      <div id="qr" style="margin:12px 0"></div>
+      <div class="big"><span id="dTotal">0</span> 元</div>
+      <div class="muted">畫面會保留，重新整理也不會不見</div>
+    </div>
+    <div class="card"><div class="list" id="dList"></div></div>
+    <div style="display:flex;gap:10px;margin-bottom:20px">
+      <button class="ghost" id="back" style="flex:1">← 修改</button>
+      <button class="ghost" id="clear" style="flex:1">清空重點</button>
+    </div>
+  </section>
+</main>
+
+<div class="bar" id="bar">
+  <div class="sum"><span id="cnt">還沒點餐</span><b><span id="tot">0</span> 元</b></div>
+  <button class="go" id="finish" disabled>完成點餐</button>
+</div>
+
+<script src="menu.js"></script>
+<script src="lib/qrcode.js"></script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LARGE=DEFAULT_LARGE_ADD;
+const ITEM={};for(const s of DEFAULT_MENU)for(const [id,name,price,large] of s.items)ITEM[id]={id,name,price,large:!!large};
+document.title=SHOP_NAME+'・手機點餐';$('#title').textContent=SHOP_NAME+'・手機點餐';
+
+// cart: { "id|0": qty, "id|1": qty }  (1 = 加大)
+let cart=LS.get('c_cart',{}), dine=LS.get('c_dine','i'), table=LS.get('c_table','');
+// 網址 ?t=5 可以預先帶入桌號（每桌貼不同 QR）
+const qt=new URLSearchParams(location.search).get('t');if(qt){table=qt;dine='i'}
+function save(){LS.set('c_cart',cart);LS.set('c_dine',dine);LS.set('c_table',table)}
+const qty=(id,l)=>cart[id+'|'+(l?1:0)]||0;
+function setQ(id,l,v){const k=id+'|'+(l?1:0);if(v<=0)delete cart[k];else cart[k]=Math.min(99,v);save();render()}
+function total(){let t=0;for(const k in cart){const [id,l]=k.split('|');const m=ITEM[id];if(m)t+=(m.price+(l==='1'?LARGE:0))*cart[k]}return t}
+function count(){return Object.values(cart).reduce((a,b)=>a+b,0)}
+
+function build(){
+  $('#tabs').innerHTML=DEFAULT_MENU.map((s,i)=>`<button data-go="s${i}">${esc(s.sec)}</button>`).join('');
+  $('#menu').innerHTML=DEFAULT_MENU.map((s,i)=>`<div class="sec" id="s${i}"><h2>${esc(s.sec)}</h2>${s.items.map(([id,name,price,large])=>`
+    <div class="it" data-id="${id}">
+      <div class="nm">${esc(name)}<small>${price} 元</small></div>
+      <div class="ctl"><button class="q" data-a="-" data-l="0">−</button><span class="n" data-n="0">0</span><button class="q add" data-a="+" data-l="0">＋</button></div>
+      ${large?`<div class="lg">加大 +${LARGE}：<button class="q" data-a="-" data-l="1">−</button><span class="n" data-n="1">0</span><button class="q add" data-a="+" data-l="1">＋</button></div>`:''}
+    </div>`).join('')}</div>`).join('');
+}
+function render(){
+  document.querySelectorAll('.it').forEach(r=>{const id=r.dataset.id;let any=0;
+    r.querySelectorAll('[data-n]').forEach(n=>{const v=qty(id,n.dataset.n==='1');n.textContent=v;any+=v});
+    r.classList.toggle('has',any>0)});
+  const c=count();$('#cnt').textContent=c?`已點 ${c} 份`:'還沒點餐';$('#tot').textContent=total().toLocaleString();
+  $('#finish').disabled=!c;
+}
+$('#menu').onclick=e=>{const b=e.target.closest('button[data-a]');if(!b)return;const id=b.closest('.it').dataset.id,l=b.dataset.l==='1';setQ(id,l,qty(id,l)+(b.dataset.a==='+'?1:-1))};
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)document.getElementById(b.dataset.go).scrollIntoView({behavior:'smooth'})};
+
+// 訂單編碼成櫃檯網址（ASCII，櫃檯掃描或用相機開都可以）
+function payload(){
+  const items=Object.entries(cart).map(([k,q])=>{const [id,l]=k.split('|');return id+'*'+q+(l==='1'?'L':'')}).join(',');
+  const base=location.href.replace(/order\.html.*$/,'').replace(/[?#].*$/,'');
+  return base+'#o=1.'+dine+'.'+encodeURIComponent(table.trim()||'-')+'.'+items+'.'+total();
+}
+function showDone(){
+  window.scrollTo(0,0);
+  $('#pick').classList.add('hidden');$('#bar').classList.add('hidden');$('#done').classList.remove('hidden');
+  document.querySelectorAll('#dine button').forEach(b=>b.classList.toggle('on',b.dataset.v===dine));
+  $('#tableWrap').classList.toggle('hidden',dine!=='i');$('#table').value=table;
+  $('#dTotal').textContent=total().toLocaleString();
+  $('#dList').innerHTML=Object.entries(cart).map(([k,q])=>{const [id,l]=k.split('|');const m=ITEM[id];return `<div><span>${esc(m.name)}${l==='1'?'（大）':''} ×${q}</span><b>${((m.price+(l==='1'?LARGE:0))*q).toLocaleString()}</b></div>`}).join('');
+  drawQR();
+}
+function drawQR(){
+  const qr=qrcode(0,'M');qr.addData(payload());qr.make();
+  $('#qr').innerHTML=qr.createImgTag(8,8,'點餐 QR code');
+}
+$('#finish').onclick=()=>{LS.set('c_view','done');showDone()};
+$('#back').onclick=()=>{LS.set('c_view','pick');$('#done').classList.add('hidden');$('#pick').classList.remove('hidden');$('#bar').classList.remove('hidden')};
+$('#clear').onclick=()=>{if(!confirm('清空重新點餐？'))return;cart={};save();render();$('#back').onclick()};
+document.querySelectorAll('#dine button').forEach(b=>b.onclick=()=>{dine=b.dataset.v;save();showDone()});
+$('#table').oninput=e=>{table=e.target.value;save();drawQR()};
+
+function applyK(k){k=Math.min(2,Math.max(.8,Math.round(k*10)/10));document.documentElement.style.setProperty('--k',k);LS.set('c_k',k);return k}
+let K=applyK(LS.get('c_k',1));
+$('#zm').onclick=()=>K=applyK(K-.1);$('#zp').onclick=()=>K=applyK(K+.1);
+
+build();render();
+if(LS.get('c_view','pick')==='done'&&count())showDone();
+</script>
+</body>
+</html>
