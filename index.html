@@ -212,7 +212,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v15</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v16</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -386,8 +386,8 @@ ${list.join('\n')}
 2. 只有一條橫線或斜線＝1。打勾 ✓ 也＝1。
 3. 筆畫可能寫歪、超出方格、跨到隔壁欄的空白處：依照筆畫最靠近、最對齊的那一列品項判斷。
 4. 方格旁邊寫「大」代表該品項加大，large=true（數量照寫的數字/正字）。
-5. 若寫了「白麵」或其他文字備註，放在 note。
-6. 只要有任何不確定（筆畫數看不清、位置介於兩列之間、可能是汙漬），uncertain=true，並在 note 簡短說明。
+5. note 只放客人寫的文字備註（例如「白麵」），最多 10 個字；不要寫你的判斷過程。
+6. 只要有任何不確定（筆畫數看不清、位置介於兩列之間、可能是汙漬），uncertain=true，note 用 6 個字以內說明（例如「筆畫在格外」）。
 7. 沒寫東西的方格不要回傳。
 8. 「外帶」框或「內用」框有被打勾或寫字就是那一種；內用框裡的數字是桌號。都看不出來 dine 填「未知」。桌號沒寫就填空字串。
 9. 若「總計」框有寫金額，填在 written_total，否則填 0。
@@ -484,7 +484,8 @@ async function recognize(b64,key){
     const qty=Math.max(1,Math.min(99,parseInt(x.qty)||1));
     const rb=x.box||x.box_2d||x.bbox;
     const bx=Array.isArray(rb)&&rb.length===4&&rb[2]>rb[0]&&rb[3]>rb[1]?rb.map(Number):null;
-    items.push({id:m.id,qty,large:!!x.large&&m.large,unsure:!!x.uncertain,note:x.note||'',box:bx});
+    let nt=String(x.note||'').trim(); if(nt.length>12) nt=x.uncertain?'位置不確定':'';
+    items.push({id:m.id,qty,large:!!x.large&&m.large,unsure:!!x.uncertain,note:nt,box:bx});
   }
   return {dine:o.dine==='外帶'?'外帶':'內用',table:o.table||'',items,writtenTotal:+o.written_total||0,warn,anchors:o.anchors||null,fromAI:true};
 }
