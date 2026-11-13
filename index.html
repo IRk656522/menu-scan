@@ -152,7 +152,7 @@ td.r,th.r{text-align:right}
   <!-- 設定 -->
   <section id="tab-settings" class="hidden">
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v4</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v5</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -341,12 +341,12 @@ ${list.join('\n')}
 5. 若寫了「白麵」或其他文字備註，放在 note。
 6. 只要有任何不確定（筆畫數看不清、位置介於兩列之間、可能是汙漬），uncertain=true，並在 note 簡短說明。
 7. 沒寫東西的方格不要回傳。
-8. 「外帶」框或「內用」框有被打勾或寫字就是那一種；內用框裡的數字是桌號。都看不出來 dine 填空字串。
+8. 「外帶」框或「內用」框有被打勾或寫字就是那一種；內用框裡的數字是桌號。都看不出來 dine 填「未知」。桌號沒寫就填空字串。
 9. 若「總計」框有寫金額，填在 written_total，否則填 0。
-只回傳 JSON。`;
+只回傳 JSON，格式：{"dine":"內用|外帶|未知","table":"","written_total":0,"items":[{"id":"代碼","qty":1,"large":false,"uncertain":false,"note":""}]}`;
 }
 const SCHEMA={type:'OBJECT',properties:{
-  dine:{type:'STRING',enum:['內用','外帶','']},
+  dine:{type:'STRING',enum:['內用','外帶','未知']},
   table:{type:'STRING'},
   written_total:{type:'INTEGER'},
   items:{type:'ARRAY',items:{type:'OBJECT',properties:{
@@ -361,10 +361,17 @@ async function fetchT(url,opt,ms){
   finally{clearTimeout(t)}
 }
 const FALLBACK=['gemini-3.8-flash','gemini-3.6-flash','gemini-3.5-flash-lite','gemini-3.1-flash-lite'];
-async function callOne(model,body,key,ms){
-  const fast={...body,generationConfig:{...(body.generationConfig||{}),thinkingConfig:/gemini-2/.test(model)?{thinkingBudget:0}:{thinkingLevel:'low'}}};
-  try{ return await callRaw(model,fast,key,ms) }
-  catch(e){ if(e.badThinking) return await callRaw(model,body,key,ms); throw e }
+async function callOne(model,body,key,ms,noThink){
+  const gc={...(body.generationConfig||{})};
+  if(!noThink) gc.thinkingConfig=/gemini-2/.test(model)?{thinkingBudget:0}:{thinkingLevel:'low'};
+  try{ return await callRaw(model,{...body,generationConfig:gc},key,ms) }
+  catch(e){
+    if(e.badThinking&&!noThink) return await callOne(model,body,key,ms,true);
+    if(e.badSchema&&gc.responseSchema){
+      const g2={...(body.generationConfig||{})};delete g2.responseSchema;
+      return await callOne(model,{...body,generationConfig:g2},key,ms,noThink);
+    }
+    throw e }
 }
 async function callRaw(model,body,key,ms){
   const r=await fetchT(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
@@ -377,6 +384,7 @@ async function callRaw(model,body,key,ms){
   e.quota = r.status===429;
   e.missing = r.status===404;
   e.badThinking = r.status===400 && /thinking/i.test(m);
+  e.badSchema = r.status===400 && /response_schema|responseSchema/i.test(m);
   if(r.status===400&&/API key/i.test(m)) e.message='API Key 不正確';
   throw e;
 }
@@ -408,7 +416,7 @@ async function recognize(b64,key){
     generationConfig:{temperature:0,responseMimeType:'application/json',responseSchema:SCHEMA}
   },key,20000,m=>{const el=$('#busyModel');if(el)el.textContent='使用 '+m});
   const txt=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');
-  let o; try{o=JSON.parse(txt)}catch(e){throw new Error('辨識結果格式錯誤')}
+  let o; try{o=JSON.parse(txt.replace(/^```(json)?|```$/g,'').trim())}catch(e){throw new Error('辨識結果格式錯誤')}
   const warn=[]; const items=[];
   for(const x of o.items||[]){
     const m=ITEM[x.id];
@@ -416,7 +424,7 @@ async function recognize(b64,key){
     const qty=Math.max(1,Math.min(99,parseInt(x.qty)||1));
     items.push({id:m.id,qty,large:!!x.large&&m.large,unsure:!!x.uncertain,note:x.note||''});
   }
-  return {dine:o.dine||'內用',table:o.table||'',items,writtenTotal:+o.written_total||0,warn};
+  return {dine:o.dine==='外帶'?'外帶':'內用',table:o.table||'',items,writtenTotal:+o.written_total||0,warn};
 }
 
 /* ========= 確認畫面 ========= */
