@@ -152,19 +152,17 @@ td.r,th.r{text-align:right}
   <!-- 設定 -->
   <section id="tab-settings" class="hidden">
     <div class="card">
-      <h2>Gemini 辨識設定</h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v4</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
-      <label>模型</label>
-      <input id="sModel" list="modelList">
-      <datalist id="modelList">
-        <option value="gemini-3.8-flash"><option value="gemini-3.6-flash"><option value="gemini-3.5-flash-lite"><option value="gemini-3.1-flash-lite">
-      </datalist>
+      <label>模型（貼好 Key 後會自動讀取清單）</label>
+      <select id="sModel"></select>
       <div class="row" style="margin-top:10px">
         <button class="primary grow" id="btnSaveKey">儲存</button>
-        <button class="ghost" id="btnTestKey">測試連線</button>
+        <button class="ghost" id="btnTestKey">測試這個模型</button>
       </div>
+      <button class="ghost" id="btnAutoPick" style="width:100%;margin-top:8px">🔍 自動找一個能用的模型</button>
       <p id="testResult" style="font-size:14px;margin:8px 0 0"></p>
       <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="sKeepPhoto" style="width:auto"> 保存點單照片（縮圖，會佔手機空間）</label>
     </div>
@@ -555,40 +553,77 @@ async function updateTodaySum(){
 /* ========= 設定 ========= */
 function loadSettings(){
   $('#sKey').value=LS.get('apiKey','');
-  $('#sModel').value=LS.get('model','gemini-3.8-flash');
+  fillModels();
+  if($('#sKey').value&&!LS.get('models',null))$('#sKey').onchange();
   $('#sKeepPhoto').checked=LS.get('keepPhoto',false);
   $('#sLarge').value=LARGE_ADD;
   $('#sMenu').value=JSON.stringify(MENU.map(s=>({sec:s.sec,items:s.items.map(([id,name,price,large])=>({id,name,price,large:!!large}))})),null,1);
   allOrders().then(a=>$('#storageInfo').textContent=`手機裡共有 ${a.length} 張點單。清除瀏覽器資料會刪掉，記得定期備份。`);
 }
-$('#btnSaveKey').onclick=()=>{LS.set('apiKey',$('#sKey').value.trim());LS.set('model',$('#sModel').value.trim()||'gemini-3.8-flash');toast('已儲存');updateKeyHint()};
+function fillModels(sel){
+  const list=LS.get('models',null)||FALLBACK;
+  const cur=sel||LS.get('model','gemini-3.8-flash');
+  const all=list.includes(cur)?list:[cur,...list];
+  $('#sModel').innerHTML=all.map(n=>`<option value="${esc(n)}"${n===cur?' selected':''}>${esc(n)}</option>`).join('');
+}
+async function loadModels(key){
+  const r=await fetchT('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',{headers:{'x-goog-api-key':key}},15000);
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(r.status===400||r.status===403?'API Key 不正確或沒有權限':(j.error&&j.error.message||'HTTP '+r.status));
+  const names=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,''));
+  let flash=names.filter(n=>/flash/.test(n)&&!/(tts|audio|live|image|embed|computer)/.test(n));
+  if(!flash.length)flash=names;
+  if(!flash.length)throw new Error('這個金鑰沒有可用的模型');
+  // 正式版在前、preview 在後
+  flash.sort((x,y)=>(/preview|exp/.test(x)-/preview|exp/.test(y))||y.localeCompare(x));
+  LS.set('models',flash);
+  let cur=LS.get('model','gemini-3.8-flash');
+  if(!flash.includes(cur)){cur=flash[0];LS.set('model',cur)}
+  fillModels(cur);
+  return flash;
+}
+const say=h=>$('#testResult').innerHTML=h;
+function saveKey(){LS.set('apiKey',$('#sKey').value.trim());LS.set('model',$('#sModel').value);updateKeyHint()}
+$('#btnSaveKey').onclick=()=>{saveKey();toast('已儲存')};
+$('#sModel').onchange=()=>{LS.set('model',$('#sModel').value);lastGood=null;say('')};
+$('#sKey').onchange=async()=>{
+  saveKey();const key=$('#sKey').value.trim();if(!key)return;
+  say('讀取模型清單…');
+  try{const l=await loadModels(key);say(`✅ 金鑰正確，有 ${l.length} 個模型可選`)}catch(e){say('❌ '+esc(e.message))}
+};
 $('#sKeepPhoto').onchange=e=>LS.set('keepPhoto',e.target.checked);
+async function testModel(model,key){
+  const t0=Date.now();
+  await callOne(model,{contents:[{parts:[{text:'回覆 OK'}]}]},key,15000);
+  return ((Date.now()-t0)/1000).toFixed(1);
+}
+function errText(e){return e.busy?'塞車或沒回應':e.quota?'免費額度用完':e.missing?'這個金鑰不能用':e.message}
 $('#btnTestKey').onclick=async()=>{
-  LS.set('apiKey',$('#sKey').value.trim());LS.set('model',$('#sModel').value.trim()||'gemini-3.8-flash');
-  const b=$('#btnTestKey'),out=$('#testResult');b.disabled=true;b.textContent='測試中…';
-  const key=$('#sKey').value.trim();let model=LS.get('model','gemini-3.8-flash');
-  const say=h=>out.innerHTML=h;
+  saveKey();const key=$('#sKey').value.trim(),model=$('#sModel').value;
+  if(!key){say('❌ 還沒貼 API Key');return}
+  const b=$('#btnTestKey');b.disabled=true;b.textContent='測試中…';
+  say('測試 '+esc(model)+'…（最多 15 秒）');
+  try{const t=await testModel(model,key);say(`✅ <b>${esc(model)}</b> 可以用（${t} 秒）`)}
+  catch(e){say(`❌ <b>${esc(model)}</b>：${esc(errText(e))}。換一個模型，或按「自動找」`)}
+  finally{b.disabled=false;b.textContent='測試這個模型'}
+};
+$('#btnAutoPick').onclick=async()=>{
+  saveKey();const key=$('#sKey').value.trim();
+  if(!key){say('❌ 還沒貼 API Key');return}
+  const b=$('#btnAutoPick');b.disabled=true;
+  const log=[];
   try{
-    if(!key)throw new Error('還沒貼 API Key');
-    say('① 檢查金鑰、讀取可用模型…');
-    const r=await fetchT('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',{headers:{'x-goog-api-key':key}},15000);
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(r.status===400||r.status===403?'API Key 不正確或沒有權限':(j.error&&j.error.message||'HTTP '+r.status));
-    const names=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,''));
-    const flash=names.filter(n=>/flash/.test(n)&&!/(tts|audio|live|image|embed)/.test(n));
-    LS.set('models',flash.length?flash:names);
-    $('#modelList').innerHTML=(flash.length?flash:names).map(n=>`<option value="${esc(n)}">`).join('');
-    if(!names.includes(model)){
-      const pick=flash.find(n=>!/preview|exp/.test(n)&&!/lite/.test(n))||flash[0]||names[0];
-      if(!pick)throw new Error('這個金鑰沒有可用的模型');
-      model=pick;LS.set('model',model);$('#sModel').value=model;
+    say('讀取模型清單…');
+    const list=await loadModels(key);
+    for(const m of list){
+      say(log.join('<br>')+(log.length?'<br>':'')+'測試 '+esc(m)+'…');
+      try{const t=await testModel(m,key);LS.set('model',m);fillModels(m);lastGood=null;
+        log.push(`✅ <b>${esc(m)}</b> 可以用（${t} 秒），已設為預設`);say(log.join('<br>'));return}
+      catch(e){log.push(`❌ ${esc(m)}：${esc(errText(e))}`)}
     }
-    say('② 金鑰正確，測試模型 '+esc(model)+'…');
-    const t0=Date.now();
-    const tj=await callGemini({contents:[{parts:[{text:'回覆 OK'}]}]},key,15000,m=>say('② 金鑰正確，測試模型 '+esc(m)+'…'));
-    say(`✅ 連線成功！模型：<b>${esc(tj._model)}</b>${tj._model!==model?'（'+esc(model)+' 目前塞車，已自動改用備用模型）':''}（${((Date.now()-t0)/1000).toFixed(1)} 秒）`);
+    log.push('全部都不能用，請過幾分鐘再試');say(log.join('<br>'));
   }catch(e){say('❌ '+esc(e.message))}
-  finally{b.disabled=false;b.textContent='測試連線'}
+  finally{b.disabled=false}
 };
 $('#btnSaveMenu').onclick=()=>{
   try{
