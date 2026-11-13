@@ -359,11 +359,16 @@ const SCHEMA={type:'OBJECT',properties:{
 async function fetchT(url,opt,ms){
   const ac=new AbortController();const t=setTimeout(()=>ac.abort(),ms);
   try{return await fetch(url,{...opt,signal:ac.signal})}
-  catch(e){if(e.name==='AbortError')throw new Error('等太久沒回應（'+ms/1000+' 秒），請檢查網路或換模型');throw new Error('連不上 Google：'+e.message)}
+  catch(e){let x;if(e.name==='AbortError'){x=new Error('等太久沒回應（'+ms/1000+' 秒）');x.busy=true}else x=new Error('連不上 Google，請檢查網路：'+e.message);throw x}
   finally{clearTimeout(t)}
 }
 const FALLBACK=['gemini-3.8-flash','gemini-3.6-flash','gemini-3.5-flash-lite','gemini-3.1-flash-lite'];
 async function callOne(model,body,key,ms){
+  const fast={...body,generationConfig:{...(body.generationConfig||{}),thinkingConfig:/gemini-2/.test(model)?{thinkingBudget:0}:{thinkingLevel:'low'}}};
+  try{ return await callRaw(model,fast,key,ms) }
+  catch(e){ if(e.badThinking) return await callRaw(model,body,key,ms); throw e }
+}
+async function callRaw(model,body,key,ms){
   const r=await fetchT(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
     method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)},ms);
   const j=await r.json().catch(()=>({}));
@@ -373,26 +378,29 @@ async function callOne(model,body,key,ms){
   e.busy = r.status===503 || r.status===500 || /high demand|overloaded|unavailable/i.test(m);
   e.quota = r.status===429;
   e.missing = r.status===404;
+  e.badThinking = r.status===400 && /thinking/i.test(m);
   if(r.status===400&&/API key/i.test(m)) e.message='API Key 不正確';
   throw e;
 }
 // 依序嘗試：設定的模型 → 其他可用的 flash 模型；遇到塞車/額度用完/找不到就換下一個
+let lastGood=null,lastGoodAt=0; // 備用模型成功後，10 分鐘內優先用它，避免每張單都先等塞車的模型
 async function callGemini(body,key,ms=45000,onTry){
   const main=LS.get('model','gemini-3.8-flash');
   const known=LS.get('models',null);
-  let list=[main,...FALLBACK,...(known||[])].filter((m,i,a)=>a.indexOf(m)===i);
+  let list=[...(lastGood&&Date.now()-lastGoodAt<600000?[lastGood]:[]),main,...FALLBACK,...(known||[])].filter((m,i,a)=>a.indexOf(m)===i);
   if(known) list=list.filter(m=>m===main||known.includes(m));
   let last;
   for(const m of list){
     if(onTry) onTry(m);
-    try{ const j=await callOne(m,body,key,ms); j._model=m; return j }
+    try{ const j=await callOne(m,body,key,ms); j._model=m; if(m!==main){lastGood=m;lastGoodAt=Date.now()}else lastGood=null; return j }
     catch(e){
       last=e;
       if(!(e.busy||e.quota||e.missing)) throw e;
+      if(onTry) onTry(m+' 沒回應，換下一個');
     }
   }
   if(last&&last.quota) throw new Error('免費額度用完或太頻繁，稍等一下再試');
-  if(last&&last.busy) throw new Error('Google 目前所有模型都很忙，過一下再試，或先手動點單');
+  if(last&&last.busy) throw new Error('Google 目前所有模型都很忙或沒回應（'+last.message+'），過一下再試，或先手動點單');
   throw last||new Error('沒有可用的模型');
 }
 
@@ -400,7 +408,7 @@ async function recognize(b64,key){
   const j=await callGemini({
     contents:[{parts:[{text:buildPrompt()},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],
     generationConfig:{temperature:0,responseMimeType:'application/json',responseSchema:SCHEMA}
-  },key,25000,m=>{const el=$('#busyModel');if(el)el.textContent='使用 '+m});
+  },key,20000,m=>{const el=$('#busyModel');if(el)el.textContent='使用 '+m});
   const txt=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');
   let o; try{o=JSON.parse(txt)}catch(e){throw new Error('辨識結果格式錯誤')}
   const warn=[]; const items=[];
@@ -577,7 +585,7 @@ $('#btnTestKey').onclick=async()=>{
     }
     say('② 金鑰正確，測試模型 '+esc(model)+'…');
     const t0=Date.now();
-    const tj=await callGemini({contents:[{parts:[{text:'回覆 OK'}]}]},key,25000,m=>say('② 金鑰正確，測試模型 '+esc(m)+'…'));
+    const tj=await callGemini({contents:[{parts:[{text:'回覆 OK'}]}]},key,15000,m=>say('② 金鑰正確，測試模型 '+esc(m)+'…'));
     say(`✅ 連線成功！模型：<b>${esc(tj._model)}</b>${tj._model!==model?'（'+esc(model)+' 目前塞車，已自動改用備用模型）':''}（${((Date.now()-t0)/1000).toFixed(1)} 秒）`);
   }catch(e){say('❌ '+esc(e.message))}
   finally{b.disabled=false;b.textContent='測試連線'}
