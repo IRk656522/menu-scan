@@ -218,7 +218,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v17</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v18</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -541,10 +541,15 @@ function tplBox(id,W,H,anchors){
   if(typeof TPL==='undefined'||!TPL[id])return null;
   const [cx,cy]=TPL[id];
   const x0=cx<500?40:cx<1000?455:885, pts=[[x0,cy-34],[cx+45,cy+34]];
-  let f=null; const pm=photoMap(anchors,W,H); if(pm)f=pm.f;
-  if(!f){const r=W/H, tr=1284/1806; if(Math.abs(r-tr)>0.08)return null; f=p=>[p[0]/1284*W,p[1]/1806*H]}
+  let f=null;
+  // 照片比例跟菜單範本一樣（截圖、正拍）→ 直接等比例換算，最準
+  if(Math.abs(W/H-1284/1806)<0.06) f=p=>[p[0]/1284*W,p[1]/1806*H];
+  else {const pm=photoMap(anchors,W,H); if(pm)f=pm.f}
+  if(!f)return null;
   const a=f(pts[0]),b=f(pts[1]);
-  return [a[1]/H*1000,a[0]/W*1000,b[1]/H*1000,b[0]/W*1000];
+  const bx=[a[1]/H*1000,a[0]/W*1000,b[1]/H*1000,b[0]/W*1000];
+  if(!bx.every(v=>v>=0&&v<=1000)||bx[2]<=bx[0]||bx[3]<=bx[1])return null;
+  return bx;
 }
 function fillBoxes(c,W,H){
   if(c._filled===W+'x'+H)return; c._filled=W+'x'+H;
