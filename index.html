@@ -152,7 +152,7 @@ td.r,th.r{text-align:right}
   <!-- 設定 -->
   <section id="tab-settings" class="hidden">
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v5</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v6</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -389,19 +389,28 @@ async function callRaw(model,body,key,ms){
   throw e;
 }
 // 依序嘗試：設定的模型 → 其他可用的 flash 模型；遇到塞車/額度用完/找不到就換下一個
-let lastGood=null,lastGoodAt=0; // 備用模型成功後，10 分鐘內優先用它，避免每張單都先等塞車的模型
+let lastGood=null; // 相容舊程式碼
+// 依序嘗試：設定的模型 → 其他 flash 模型。10 分鐘內塞車過的模型排到最後；備用模型成功就直接存成預設。
 async function callGemini(body,key,ms=45000,onTry){
   const main=LS.get('model','gemini-3.8-flash');
   const known=LS.get('models',null);
-  let list=[...(lastGood&&Date.now()-lastGoodAt<600000?[lastGood]:[]),main,...FALLBACK,...(known||[])].filter((m,i,a)=>a.indexOf(m)===i);
+  const bad=LS.get('badModels',{}); const now=Date.now();
+  let list=[main,...FALLBACK,...(known||[])].filter((m,i,a)=>a.indexOf(m)===i);
   if(known) list=list.filter(m=>m===main||known.includes(m));
+  const isBad=m=>bad[m]&&now-bad[m]<600000;
+  list=[...list.filter(m=>!isBad(m)),...list.filter(isBad)];
   let last;
   for(const m of list){
     if(onTry) onTry(m);
-    try{ const j=await callOne(m,body,key,ms); j._model=m; if(m!==main){lastGood=m;lastGoodAt=Date.now()}else lastGood=null; return j }
-    catch(e){
+    try{
+      const j=await callOne(m,body,key,ms); j._model=m;
+      if(bad[m]){delete bad[m];LS.set('badModels',bad)}
+      if(m!==main){LS.set('model',m);try{fillModels(m)}catch(e){}}
+      return j;
+    }catch(e){
       last=e;
       if(!(e.busy||e.quota||e.missing)) throw e;
+      bad[m]=Date.now();LS.set('badModels',bad);
       if(onTry) onTry(m+' 沒回應，換下一個');
     }
   }
