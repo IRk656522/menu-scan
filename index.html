@@ -165,7 +165,14 @@ td.r,th.r{text-align:right}
   <!-- 設定 -->
   <section id="tab-settings" class="hidden">
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v10</span></h2>
+      <h2>🔠 字體大小</h2>
+      <div class="row"><button class="ghost" data-zoom="-1" style="font-size:18px;min-width:56px">A−</button><input type="range" id="sFont" min="0.7" max="2.2" step="0.05" class="grow" style="padding:0"><button class="ghost" data-zoom="1" style="font-size:24px;min-width:56px">A＋</button></div>
+      <div class="row" style="margin-top:8px"><span class="muted grow" id="sFontVal"></span><button class="small ghost" id="sFontReset">恢復預設</button></div>
+      <div id="sFontPreview" class="items" style="margin-top:8px"><div class="it"><div class="r1"><div class="nm">打拋豬飯</div><div class="sub">$100</div></div></div></div>
+      <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
+    </div>
+    <div class="card">
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v11</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -178,13 +185,6 @@ td.r,th.r{text-align:right}
       <button class="ghost" id="btnAutoPick" style="width:100%;margin-top:8px">🔍 自動找一個能用的模型</button>
       <p id="testResult" style="font-size:14px;margin:8px 0 0"></p>
       <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="sKeepPhoto" style="width:auto"> 保存點單照片（店家修改會用藍筆補畫上去）</label>
-    </div>
-    <div class="card">
-      <h2>結帳畫面字體大小</h2>
-      <div class="row"><span>小</span><input type="range" id="sFont" min="0.7" max="2.2" step="0.05" class="grow" style="padding:0"><span style="font-size:22px">大</span></div>
-      <div class="row" style="margin-top:8px"><span class="muted grow" id="sFontVal"></span><button class="small ghost" id="sFontReset">恢復預設</button></div>
-      <div id="sFontPreview" class="items" style="margin-top:8px"><div class="it"><div class="r1"><div class="nm">打拋豬飯</div><div class="sub">$100</div></div></div></div>
-      <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
       <h2>資料備份</h2>
