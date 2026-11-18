@@ -48,3 +48,33 @@ var TPL_TOTAL=[1095,1701];
 var TPL_BARS=[[60,470,700,505],[60,690,400,728],[470,690,830,728],[900,690,1240,728],[60,1140,400,1180],[470,1210,830,1248],[60,1518,400,1556],[470,1438,830,1476]];
 // 菜單上印的紅色圖案（不是客人寫的）：辣椒醬旁的辣椒
 var TPL_IGNORE=[[555,1715,640,1790]];
+
+// 備料材料對照：每個材料 → { 品項代碼: 每份用量 }（設定頁可修改）
+var DEFAULT_MATERIALS=[
+ {name:'雞蛋',unit:'顆',uses:{ld:1,txd:1,'hbd-q':1,'hbd-b':1,dpzf:1}},
+ {name:'油麵',unit:'份',uses:{'zbm-y':1,'ym-y':1,gm:1,zjm:1,sjm:1}},
+ {name:'粄條',unit:'份',uses:{'zbm-b':1,'ym-b':1,gbt:1}},
+ {name:'米粉',unit:'份',uses:{'zbm-m':1,'ym-m':1,gmf:1}},
+ {name:'冬粉',unit:'份',uses:{'zbm-d':1,'ym-d':1}},
+ {name:'白飯',unit:'碗',uses:{cyjf:1,dpzf:1,ylf:1,yrf:1,lrf:1,bf:1}},
+ {name:'嘴邊肉',unit:'份',uses:{'zbm-y':1,'zbm-b':1,'zbm-m':1,'zbm-d':1,zbrt:1,zbr:1}},
+ {name:'鴨肉',unit:'份',uses:{'ym-y':1,'ym-b':1,'ym-m':1,'ym-d':1,yrt:1,yrf:1,ylf:1}},
+ {name:'雞腿',unit:'隻',uses:{cyjf:1,cyjt:1}},
+ {name:'豬絞肉',unit:'份',uses:{dpzf:1,lrf:1,zjm:1}},
+ {name:'豆干',unit:'片',uses:{dg:2}},
+ {name:'油豆腐',unit:'個',uses:{ydf:2}},
+ {name:'海帶',unit:'份',uses:{hd:1}},
+ {name:'米血',unit:'份',uses:{mx:1}},
+ {name:'甜不辣',unit:'份',uses:{tbl:1}},
+ {name:'玉米筍',unit:'份',uses:{yms:1}},
+ {name:'杏鮑菇',unit:'份',uses:{xbg:1}},
+ {name:'青菜',unit:'份',uses:{tqc:1}},
+ {name:'白蘿蔔',unit:'份',uses:{tlb:1,lbt:1}},
+ {name:'貢丸',unit:'份',uses:{gwt:1}},
+ {name:'黃金泡菜',unit:'份',uses:{hjpc:1}},
+ {name:'韓式泡菜',unit:'份',uses:{hspc:1}},
+ {name:'花生小魚乾',unit:'份',uses:{hsxyg:1}},
+ {name:'雪碧',unit:'瓶',uses:{xb:1}},
+ {name:'可樂',unit:'瓶',uses:{kl:1}},
+ {name:'辣椒醬',unit:'罐',uses:{ljj:1}}
+];

@@ -112,6 +112,16 @@ td.r,th.r{text-align:right}
 #prepTable td:first-child{width:99%}
 #rFrom,#rTo{min-width:0;flex:1}
 #prepTable td.big{font-size:20px;font-weight:800;color:var(--brand)}
+.mat{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:10px;background:#fffdfa}
+.mat .hd{display:flex;gap:6px;align-items:center}
+.mat .hd input{padding:8px}
+.mat .hd .mn{flex:1;font-weight:800;font-size:17px}
+.mat .hd .mu{width:64px;text-align:center}
+.mat .uses{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:#f3ebe2;border-radius:20px;padding:4px 6px 4px 10px;font-size:14px}
+.chip input{width:46px;padding:3px 4px;text-align:center;font-size:14px;border-radius:8px}
+.chip button{background:none;padding:0 4px;font-size:16px;color:var(--muted)}
+.mat select{font-size:14px;padding:6px;margin-top:8px;width:auto}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:20px;z-index:30;font-size:15px}
 </style>
 </head>
@@ -241,7 +251,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v34</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v35</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -264,6 +274,16 @@ td.r,th.r{text-align:right}
         <input type="file" id="fileRestore" accept=".json,application/json" class="hidden">
       </div>
       <p class="muted" id="storageInfo"></p>
+    </div>
+    <div class="card">
+      <h2>🥚 備料材料對照</h2>
+      <p class="muted">每個材料用在哪些品項、每份用多少。業績頁會用「建議備量 × 用量」算出要準備多少材料。</p>
+      <div id="matList"></div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap">
+        <button class="ghost" id="btnMatAdd">＋ 新增材料</button>
+        <button class="primary grow" id="btnMatSave">儲存</button>
+        <button class="ghost" id="btnMatReset">還原預設</button>
+      </div>
     </div>
     <div class="card">
       <h2>菜單與價格</h2>
@@ -1066,6 +1086,7 @@ async function updateTodaySum(){
 function loadSettings(){
   $('#sKey').value=LS.get('apiKey','');
   fillModels();
+  renderMats();
   try{renderCustQr()}catch(e){}
   if($('#sKey').value&&!LS.get('models',null))$('#sKey').onchange();
   $('#sKeepPhoto').checked=LS.get('keepPhoto',true);
@@ -1180,6 +1201,28 @@ $('#sFontReset').onclick=()=>setFont(1);
 document.querySelectorAll('[data-zoom]').forEach(b=>b.onclick=()=>setFont(LS.get('fontK',1)+0.1*b.dataset.zoom));
 applyFont(LS.get('fontK',1));
 
+
+/* ========= 備料材料對照（設定） ========= */
+let MATS=JSON.parse(JSON.stringify(LS.get('materials',typeof DEFAULT_MATERIALS!=='undefined'?DEFAULT_MATERIALS:[])));
+function renderMats(){
+  const opts=MENU.map(s=>`<optgroup label="${esc(s.sec)}">${s.items.map(([id,name])=>`<option value="${esc(id)}">${esc(name)}</option>`).join('')}</optgroup>`).join('');
+  $('#matList').innerHTML=MATS.length?MATS.map((m,i)=>`<div class="mat" data-i="${i}">
+    <div class="hd"><input class="mn" data-f="name" value="${esc(m.name)}" placeholder="材料名稱"><input class="mu" data-f="unit" value="${esc(m.unit)}" placeholder="單位"><button class="small ghost" data-del="${i}">刪除</button></div>
+    <div class="uses">${Object.entries(m.uses).map(([id,q])=>`<span class="chip">${esc(ITEM[id]?ITEM[id].name:id)} ×<input type="number" inputmode="decimal" step="0.5" min="0" data-use="${esc(id)}" value="${q}"><button data-rm="${esc(id)}" aria-label="移除">✕</button></span>`).join('')||'<span class="muted">還沒有品項</span>'}</div>
+    <select data-add><option value="">＋ 加入用到這個材料的品項…</option>${opts}</select>
+  </div>`).join(''):'<p class="muted">還沒有材料，按「＋ 新增材料」。</p>';
+}
+$('#matList').oninput=e=>{const box=e.target.closest('.mat');if(!box)return;const m=MATS[+box.dataset.i];
+  if(e.target.dataset.f)m[e.target.dataset.f]=e.target.value;
+  if(e.target.dataset.use)m.uses[e.target.dataset.use]=Math.max(0,parseFloat(e.target.value)||0)};
+$('#matList').onchange=e=>{if(e.target.matches('[data-add]')&&e.target.value){const m=MATS[+e.target.closest('.mat').dataset.i];m.uses[e.target.value]=m.uses[e.target.value]||1;renderMats()}};
+$('#matList').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.del!=null){if(confirm('刪除「'+MATS[+b.dataset.del].name+'」？')){MATS.splice(+b.dataset.del,1);renderMats()}}
+  if(b.dataset.rm){const m=MATS[+b.closest('.mat').dataset.i];delete m.uses[b.dataset.rm];renderMats()}};
+$('#btnMatAdd').onclick=()=>{MATS.push({name:'',unit:'份',uses:{}});renderMats();const ins=$('#matList').querySelectorAll('.mn');ins[ins.length-1].focus()};
+$('#btnMatSave').onclick=()=>{MATS=MATS.filter(m=>m.name.trim());LS.set('materials',MATS);renderMats();toast('材料對照已儲存')};
+$('#btnMatReset').onclick=()=>{if(!confirm('還原成預設的材料對照？'))return;MATS=JSON.parse(JSON.stringify(typeof DEFAULT_MATERIALS!=='undefined'?DEFAULT_MATERIALS:[]));LS.set('materials',MATS);renderMats();toast('已還原')};
+
 /* ========= 點單方式 ========= */
 function applyAcc(){const a=LS.get('accurate',true);document.querySelectorAll('#sAcc button').forEach(b=>b.classList.toggle('on',(b.dataset.acc==='1')===a))}
 document.querySelectorAll('#sAcc button').forEach(b=>b.onclick=()=>{LS.set('accurate',b.dataset.acc==='1');applyAcc()});
@@ -1262,7 +1305,7 @@ function checkHash(){
 }
 window.addEventListener('hashchange',checkHash);
 
-$('#shopName').textContent=SHOP_NAME+' · v34';document.title='點單掃描・'+SHOP_NAME;
+$('#shopName').textContent=SHOP_NAME+' · v35';document.title='點單掃描・'+SHOP_NAME;
 applyMode();
 if(LS.get('mode',null)===null&&!/[#&]o=1\./.test(location.hash)){show($('nav'),false);gotoTab('mode')}
 checkHash();
