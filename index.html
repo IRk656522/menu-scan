@@ -151,7 +151,7 @@ td.r,th.r{text-align:right}
           <input id="rvTable" placeholder="桌號" inputmode="numeric" style="width:90px">
         </div>
         <div id="rvWarn"></div>
-        <details id="rvRaw" class="muted hidden" style="margin-top:6px"><summary>AI 原始結果（除錯用）</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:240px;overflow:auto"></pre></details>
+        <details id="rvRaw" class="muted hidden" style="margin-top:6px"><summary>AI 原始結果（除錯用）</summary><img id="rvTiles" class="photo hidden" alt=""><pre style="white-space:pre-wrap;font-size:11px;max-height:240px;overflow:auto"></pre></details>
       </div>
       <div class="card rvItemsCard">
         <div class="row" style="justify-content:space-between"><h2 style="margin:0">品項</h2>
@@ -223,7 +223,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v27</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v28</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -376,8 +376,10 @@ async function onFile(input){
   show($('#scanStart'),false); show($('#scanBusy'),true);
   const t0=Date.now(); const timer=setInterval(()=>$('#busyTime').textContent=((Date.now()-t0)/1000).toFixed(1)+' 秒',100);
   try{
-    const r=await recognize(big.split(',')[1],key);
-    try{inkCheck(img,r)}catch(e){console.error(e)}
+    let r=null;
+    // 對位成功：紅筆偵測決定「點了哪些」，裁切放大後請 AI 只讀數量
+    if(img._rectified&&!img._loose){try{r=await recognizeCells(img,key)}catch(e){console.error(e);if(!/額度|忙|沒回應/.test(e.message||''))r=null;else throw e}}
+    if(!r){r=await recognize(big.split(',')[1],key);try{inkCheck(img,r)}catch(e){console.error(e)}}
     if(!rectified&&typeof TPL!=='undefined'&&!isExactTpl(img))r.warn.push('找不到菜單的邊緣，格子位置可能不準。請把整張菜單拍進去、背景不要太亮。');
     if(img._loose)r.warn.push('照片對位不太準，框的位置僅供參考，請對照照片確認。');
     openReview({...r,photo:big,thumb});
@@ -624,6 +626,55 @@ async function callGemini(body,key,ms=45000,onTry){
   throw last||new Error('沒有可用的模型');
 }
 
+/* ========= 逐格辨識：有筆跡的格子裁切放大，AI 只讀數量 ========= */
+const CELL_SCHEMA={type:'OBJECT',properties:{
+  dine:{type:'STRING',enum:['內用','外帶','未知']},table:{type:'STRING'},
+  cells:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},qty:{type:'INTEGER'},large:{type:'BOOLEAN'},uncertain:{type:'BOOLEAN'}},required:['n','qty','large','uncertain']}}
+},required:['dine','table','cells']};
+async function recognizeCells(img,key){
+  const res=inkScan(img);if(!res)return null;
+  const TH=60,ids=Object.keys(res.out).filter(id=>res.out[id]>=TH&&ITEM[id]);
+  if(!ids.length)return null; // 沒偵測到紅筆（可能用別的顏色）→ 改用整張辨識
+  ids.sort((a,b)=>TPL[a][0]-TPL[b][0]||TPL[a][1]-TPL[b][1]);
+  // 拼圖：第 0 格是內用/外帶框，其餘每格一個品項
+  const SC=2,TW=280,TH2=100,LAB=70,cols=2;
+  const tiles=[{x0:805,y0:262,x1:1250,y1:418,label:'0 用餐'}].concat(ids.map((id,i)=>{const[cx,cy0]=TPL[id],cy=cy0+((res.fix&&res.fix[id])||0);return{id,x0:cx-160,y0:cy-50,x1:cx+120,y1:cy+50,label:String(i+1)}}));
+  const tw=TW*SC+LAB,th=TH2*SC,rows=Math.ceil(tiles.length/cols);
+  const cv=document.createElement('canvas');cv.width=tw*cols;cv.height=th*rows;const g=cv.getContext('2d');
+  g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);
+  tiles.forEach((t,i)=>{const X=(i%cols)*tw,Y=Math.floor(i/cols)*th;
+    const sw=t.x1-t.x0,sh=t.y1-t.y0,dw=Math.min(TW*SC,sw*SC*(TH2/sh)),dh=TH2*SC;
+    g.drawImage(img,t.x0,t.y0,sw,sh,X+LAB,Y,dw,dh);
+    g.fillStyle='#222';g.fillRect(X,Y,LAB-6,th);g.fillStyle='#fff';g.font='bold 34px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(t.label.split(' ')[0],X+(LAB-6)/2,Y+th/2);
+    g.strokeStyle='#999';g.lineWidth=2;g.strokeRect(X,Y,tw,th)});
+  const b64=cv.toDataURL('image/jpeg',0.88).split(',')[1];
+  const list=ids.map((id,i)=>`${i+1}：${ITEM[id].name}（${ITEM[id].price} 元）`).join('\n');
+  const prompt=`這是一張小吃店紙本點單的局部放大拼圖。每一小格左邊黑底白字是編號。
+第 0 格是「外帶」「內用」兩個框（內用框裡手寫的是桌號）：哪個框有寫字/打勾就是那一種，桌號填在 table；都沒寫 dine 填「未知」。
+第 1 格以後，每一格是一個品項那一列（左邊是品名價格，右邊是方框），客人用紅筆在方框附近劃記數量：
+${list}
+
+請判斷每一格客人點了幾份（qty）：
+- 阿拉伯數字照寫的數字（2 就是 2，即使寫得很大、超出方框）。
+- 正字筆畫：一=1、丅（一橫一豎，豎線可能超出方框）=2、下=3、正少一筆=4、正=5，多個要相加。
+- 只有一條橫線、斜線、勾、弧線 = 1。
+- 方框旁邊寫「大」→ large=true。
+- 有一點不確定就 uncertain=true。
+每一格都要回傳（n 是編號，從 1 開始），只回傳 JSON。`;
+  const j=await callGemini({contents:[{parts:[{text:prompt},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],
+    generationConfig:{temperature:0,responseMimeType:'application/json',responseSchema:CELL_SCHEMA}},
+    key,LS.get('accurate',true)?40000:20000,m=>{const el=$('#busyModel');if(el)el.textContent='使用 '+m+'（逐格）'});
+  const txt=(j.candidates?.[0]?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');
+  window._lastRaw=txt;window._lastTiles=cv.toDataURL('image/jpeg',0.7);
+  let o;try{o=JSON.parse(txt.replace(/^```(json)?|```$/g,'').trim())}catch(e){throw new Error('辨識結果格式錯誤')}
+  const by={};for(const c of o.cells||[])by[c.n]=c;
+  const items=ids.map((id,i)=>{const c=by[i+1];let qty=c?Math.max(1,Math.min(99,parseInt(c.qty)||1)):1,unsure=!c||!!c.uncertain||!(parseInt(c.qty)>0),note='';
+    if(res.shape[id]&&qty<2){qty=2;unsure=true;note='看起來是丅＝2'}
+    if(!c)note='AI 沒回這格，數量請確認';
+    return{id,qty,large:!!(c&&c.large)&&ITEM[id].large,unsure,note,box:null}});
+  return{dine:o.dine==='外帶'?'外帶':'內用',table:String(o.table||'').slice(0,8),items,writtenTotal:0,warn:[],anchors:null,fromAI:true,rowFix:res.fix,dropped:[]};
+}
+
 async function recognize(b64,key){
   const j=await callGemini({
     contents:[{parts:[{text:buildPrompt()},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],
@@ -660,7 +711,7 @@ function openReview(o){
   show($('#scanStart'),false); show($('#review'),true);
   $('#rvTable').value=cur.table||'';
   cur._img=null;
-  if(cur.fromAI&&window._lastRaw){show($('#rvRaw'),true);$('#rvRaw pre').textContent=window._lastRaw;window._lastRaw=''}else show($('#rvRaw'),false);
+  if(cur.fromAI&&window._lastRaw){show($('#rvRaw'),true);$('#rvRaw pre').textContent=window._lastRaw;window._lastRaw='';const ti=$('#rvTiles');if(window._lastTiles){ti.src=window._lastTiles;show(ti,true);window._lastTiles=''}else show(ti,false)}else show($('#rvRaw'),false);
   if(cur.photo){const im=new Image();im.onload=()=>{if(cur&&cur.photo===o.photo){cur._img=im;drawReviewPhoto()}};im.src=cur.photo;show($('#photoCard'),true)}else show($('#photoCard'),false);
   renderReview();
   window.scrollTo(0,0);
