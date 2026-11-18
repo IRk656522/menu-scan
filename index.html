@@ -102,6 +102,16 @@ td.r,th.r{text-align:right}
 @media print{body>*:not(#printArea){display:none!important}#printArea{display:grid!important;grid-template-columns:1fr 1fr;gap:12mm;padding:8mm}
   .pq{border:1px dashed #999;border-radius:6mm;padding:6mm;text-align:center;break-inside:avoid;font-family:sans-serif}
   .pq img{width:55mm;height:55mm;image-rendering:pixelated}.pq b{display:block;font-size:20pt}.pq span{font-size:12pt}}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .tip{position:absolute;pointer-events:none;background:#2b1a10;color:#fff;font-size:13px;padding:6px 9px;border-radius:8px;white-space:nowrap;transform:translate(-50%,-110%);display:none;z-index:3}
+.chart .hit{fill:transparent;cursor:pointer}
+.chart .bar{fill:var(--brand2)}
+.chart .bar.on{fill:var(--brand)}
+#prepTable th,#prepTable td{white-space:nowrap}
+#prepTable td:first-child{width:99%}
+#rFrom,#rTo{min-width:0;flex:1}
+#prepTable td.big{font-size:20px;font-weight:800;color:var(--brand)}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:20px;z-index:30;font-size:15px}
 </style>
 </head>
@@ -181,8 +191,16 @@ td.r,th.r{text-align:right}
         <input type="date" id="rFrom"><span>～</span><input type="date" id="rTo">
       </div>
     </div>
+    <div class="card" id="prepCard">
+      <h2>🥚 備料參考</h2>
+      <div class="row" style="flex-wrap:wrap;margin-bottom:6px"><span class="muted grow" id="prepHint"></span>
+        <div class="seg" id="prepDay"><button data-d="0">今天</button><button data-d="1">明天</button></div></div>
+      <table id="prepTable"></table>
+      <p class="muted">預估＝最近 4 個同一個星期幾的平均（資料不夠就用最近 7 天平均），建議備量多抓 10%。湯麵各口味合併計算。</p>
+    </div>
     <div class="stats" id="rStats"></div>
-    <div class="card" style="margin-top:12px"><h2>每日營業額</h2><table id="rDaily"></table></div>
+    <div class="card" style="margin-top:12px"><h2>每日營業額</h2><div id="chDaily" class="chart"></div><details><summary class="muted">表格</summary><table id="rDaily"></table></details></div>
+    <div class="card"><h2>哪個時段最忙</h2><div id="chHour" class="chart"></div></div>
     <div class="card"><h2>品項銷量排行</h2><table id="rItems"></table></div>
     <div class="card"><h2>點單明細</h2><div id="rOrders"></div></div>
   </section>
@@ -223,7 +241,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v33</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v34</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -953,7 +971,51 @@ function setRange(k){
 document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>setRange(b.dataset.range));
 $('#rFrom').onchange=$('#rTo').onchange=()=>renderReport();
 
+// 單一數列長條圖（SVG，含滑過提示）
+function barChart(el,labels,values,fmt,opt={}){
+  const W=640,H=opt.h||220,pl=44,pr=8,pt=12,pb=28,n=values.length;
+  if(!n){el.innerHTML='<p class="muted">沒有資料</p>';return}
+  const mx=Math.max(1,...values),step=Math.pow(10,Math.floor(Math.log10(mx))),top=Math.ceil(mx/step)*step||1;
+  const bw=(W-pl-pr)/n,gap=Math.min(6,bw*0.25);
+  const y=v=>pt+(H-pt-pb)*(1-v/top);
+  let g='';for(let i=0;i<=4;i++){const v=top*i/4,yy=y(v);g+=`<line x1="${pl}" x2="${W-pr}" y1="${yy}" y2="${yy}" stroke="#eadfd4" stroke-width="1"/><text x="${pl-6}" y="${yy+4}" font-size="11" text-anchor="end" fill="#8a7565">${fmt(v,true)}</text>`}
+  const every=Math.ceil(n/(opt.maxLabels||12));
+  let bars='',lab='',hits='';
+  values.forEach((v,i)=>{const x=pl+i*bw+gap/2,w=Math.max(1,bw-gap),yy=y(v),h=H-pb-yy,r=Math.min(4,w/2,h);
+    bars+=h>0?`<path class="bar" data-i="${i}" d="M${x},${H-pb} V${yy+r} Q${x},${yy} ${x+r},${yy} H${x+w-r} Q${x+w},${yy} ${x+w},${yy+r} V${H-pb} Z"/>`:'';
+    if(i%every===0)lab+=`<text x="${x+w/2}" y="${H-pb+17}" font-size="11" text-anchor="middle" fill="#8a7565">${esc(labels[i])}</text>`;
+    hits+=`<rect class="hit" data-i="${i}" x="${pl+i*bw}" y="${pt}" width="${bw}" height="${H-pt-pb}"/>`});
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opt.title||'')}">${g}<line x1="${pl}" x2="${W-pr}" y1="${H-pb}" y2="${H-pb}" stroke="#cbb9a8"/>${bars}${lab}${hits}</svg><div class="tip"></div>`;
+  const tip=el.querySelector('.tip'),svg=el.querySelector('svg');
+  const showTip=i=>{const r=svg.getBoundingClientRect(),sx=r.width/W;el.querySelectorAll('.bar').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
+    tip.innerHTML=`${esc(labels[i])}<br><b>${fmt(values[i])}</b>`;tip.style.left=(pl+i*bw+bw/2)*sx+'px';tip.style.top=y(values[i])*sx+'px';tip.style.display='block'};
+  el.querySelectorAll('.hit').forEach(h=>{h.onmouseenter=h.onclick=()=>showTip(+h.dataset.i)});
+  svg.onmouseleave=()=>{tip.style.display='none';el.querySelectorAll('.bar').forEach(b=>b.classList.remove('on'))};
+}
+const baseName=n=>n.split('・')[0];
+let prepOffset=1;
+async function renderPrep(){
+  const today=new Date();const target=new Date(today);target.setDate(today.getDate()+prepOffset);
+  const wd=target.getDay(),wn='日一二三四五六'[wd];
+  const from=new Date(today);from.setDate(today.getDate()-35);
+  const os=await ordersBetween(ymd(from),ymd(today));
+  const per={}; // name -> {date -> qty}
+  for(const o of os)for(const l of o.items){const n=baseName(l.name);(per[n]??={});per[n][o.date]=(per[n][o.date]||0)+l.qty}
+  // 同星期幾的過去日期（不含今天）
+  const same=[],last7=[];for(let k=1;k<=35;k++){const d=new Date(today);d.setDate(today.getDate()-k);const s=ymd(d);if(d.getDay()===wd&&same.length<4)same.push(s);if(k<=7)last7.push(s)}
+  const daysWithData=new Set(os.map(o=>o.date));
+  const sameUsed=same.filter(d=>daysWithData.has(d)),l7=last7.filter(d=>daysWithData.has(d));
+  const basis=sameUsed.length>=2?sameUsed:l7;
+  const td=ymd(today);
+  const rows=Object.keys(per).map(n=>{const avg=basis.length?basis.reduce((a,d)=>a+(per[n][d]||0),0)/basis.length:0;return{n,today:per[n][td]||0,avg,sug:Math.ceil(avg*1.1)}})
+    .filter(r=>r.avg>0||r.today>0).sort((a,b)=>b.sug-a.sug||b.today-a.today);
+  $('#prepHint').textContent=basis.length?`預估週${wn}（${prepOffset?'明天':'今天'}）・依據 ${basis.length} 天的紀錄${sameUsed.length>=2?'（同星期幾）':'（最近 7 天）'}`:'還沒有足夠的紀錄可以預估，先看今天賣了多少';
+  document.querySelectorAll('#prepDay button').forEach(b=>b.classList.toggle('on',+b.dataset.d===prepOffset));
+  $('#prepTable').innerHTML=rows.length?`<tr><th>品項</th><th class="r">今天已賣</th><th class="r">平均</th><th class="r">建議備量</th></tr>`+rows.map(r=>`<tr><td>${esc(r.n)}</td><td class="r">${r.today}</td><td class="r">${r.avg?r.avg.toFixed(1):'-'}</td><td class="r big">${r.sug||'-'}</td></tr>`).join(''):'<tr><td class="muted">還沒有資料</td></tr>';
+}
+document.querySelectorAll('#prepDay button').forEach(b=>b.onclick=()=>{prepOffset=+b.dataset.d;renderPrep()});
 async function renderReport(){
+  renderPrep();
   if(!$('#rFrom').value){const t=ymd(new Date());$('#rFrom').value=t;$('#rTo').value=t}
   let f=$('#rFrom').value,t=$('#rTo').value;if(f>t)[f,t]=[t,f];
   const os=(await ordersBetween(f,t)).sort((a,b)=>b.ts-a.ts);
@@ -969,6 +1031,14 @@ async function renderReport(){
   const byDay={};for(const o of os){(byDay[o.date]??={n:0,t:0});byDay[o.date].n++;byDay[o.date].t+=o.total}
   const days=Object.keys(byDay).sort().reverse();
   $('#rDaily').innerHTML=days.length?`<tr><th>日期</th><th class="r">單數</th><th class="r">營業額</th></tr>`+days.map(d=>`<tr><td>${d}</td><td class="r">${byDay[d].n}</td><td class="r">${money(byDay[d].t)}</td></tr>`).join(''):'<tr><td class="muted">沒有資料</td></tr>';
+  // 每日營業額圖（範圍內每一天都列出，沒營業補 0）
+  {const ds=[];for(let d=new Date(f+'T00:00');ymd(d)<=t;d.setDate(d.getDate()+1))ds.push(ymd(d));
+   barChart($('#chDaily'),ds.map(d=>d.slice(5).replace('-','/')),ds.map(d=>byDay[d]?byDay[d].t:0),(v,ax)=>ax&&v>=1000?(v/1000)+'k':money(Math.round(v))+(ax?'':' 元'),{title:'每日營業額'})}
+  // 時段（每小時單數）
+  {const hrs=new Array(24).fill(0);for(const o of os)hrs[new Date(o.ts).getHours()]++;
+   let a=hrs.findIndex(v=>v>0),b=23-[...hrs].reverse().findIndex(v=>v>0);if(a<0){a=10;b=20}a=Math.max(0,a-1);b=Math.min(23,b+1);
+   const H=[];for(let h=a;h<=b;h++)H.push(h);
+   barChart($('#chHour'),H.map(h=>h+'點'),H.map(h=>hrs[h]),(v,ax)=>ax?String(Math.round(v)):v+' 單',{title:'各時段單數',h:180})}
   // 品項
   const byItem={};
   for(const o of os)for(const l of o.items){const k=l.name;(byItem[k]??={q:0,t:0,big:0});byItem[k].q+=l.qty;byItem[k].t+=(l.price+(l.largeAdd||0))*l.qty;if(l.large)byItem[k].big+=l.qty}
@@ -1192,7 +1262,7 @@ function checkHash(){
 }
 window.addEventListener('hashchange',checkHash);
 
-$('#shopName').textContent=SHOP_NAME+' · v33';document.title='點單掃描・'+SHOP_NAME;
+$('#shopName').textContent=SHOP_NAME+' · v34';document.title='點單掃描・'+SHOP_NAME;
 applyMode();
 if(LS.get('mode',null)===null&&!/[#&]o=1\./.test(location.hash)){show($('nav'),false);gotoTab('mode')}
 checkHash();
