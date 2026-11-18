@@ -223,7 +223,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v28</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v29</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -486,8 +486,12 @@ function inkScan(img){
   // 同一欄相鄰列取中位數，避免單列判斷失誤
   const cols={};for(const id of ids0){const[cx]=TPL[id];(cols[cx]??=[]).push(id)}
   const fx={};for(const cx in cols){const a=cols[cx].sort((p,q)=>TPL[p][1]-TPL[q][1]);a.forEach((id,i)=>{const v=[a[i-1],id,a[i+1]].filter(Boolean).map(x=>fix[x]).sort((p,q)=>p-q);fx[id]=v[Math.floor(v.length/2)]})}
+  // 每列上下範圍：到上下相鄰品項的中間；上方/下方沒有品項（標題、空白）就延伸 45
+  const band={};for(const cx in cols){const a=cols[cx];a.forEach((id,i)=>{const cy=TPL[id][1]+fx[id];
+    const pu=a[i-1]&&cy-(TPL[a[i-1]][1]+fx[a[i-1]])<100?(cy-(TPL[a[i-1]][1]+fx[a[i-1]]))/2:45;
+    const pd=a[i+1]&&(TPL[a[i+1]][1]+fx[a[i+1]])-cy<100?((TPL[a[i+1]][1]+fx[a[i+1]])-cy)/2:45;band[id]=[pu,pd]})}
   // 每個品項的判斷範圍：價格右邊到方框右側（寫在品名上的不算）；方框內權重較高
-  const ids=ids0,tight=ids.map(id=>{const[cx,cy0]=TPL[id],cy=cy0+fx[id];return[(cx-39)*k,(cy-26)*k,(cx+39)*k,(cy+26)*k]}),boxes=ids.map(id=>{const[cx,cy0]=TPL[id],cy=cy0+fx[id];const x0=cy<700?cx-42:cx-95;return[x0*k,(cy-30)*k,Math.min(1284,cx+65)*k,(cy+30)*k]});
+  const ids=ids0,tight=ids.map(id=>{const[cx,cy0]=TPL[id],cy=cy0+fx[id];return[(cx-39)*k,(cy-26)*k,(cx+39)*k,(cy+26)*k]}),boxes=ids.map(id=>{const[cx,cy0]=TPL[id],cy=cy0+fx[id];const x0=cy<700?cx-42:cx-95;return[x0*k,(cy-band[id][0])*k,Math.min(1284,cx+65)*k,(cy+band[id][1])*k]});
   const out={},shape={};for(const id of ids)out[id]=0;
   // 一筆一筆（連通區塊）算：落在哪個方框的比例最高，≥30% 才算那一格
   const lab=new Uint8Array(N),st=new Int32Array(N);
@@ -505,7 +509,7 @@ function inkScan(img){
       for(const p of pts){if(!set.has(p-1)){let L=0,q=p;while(set.has(q)){L++;q++}hr=Math.max(hr,L)}if(!set.has(p-CW)){let L=0,q=p;while(set.has(q)){L++;q+=CW}vr=Math.max(vr,L)}}
       if(hr>=18&&vr>=15)shape[ids[bj]]=true}
   }
-  return {out,fix:fx,shape};
+  return {out,fix:fx,shape,band};
 }
 function inkCheck(img,r){
   if(!img._rectified)return;
@@ -645,6 +649,8 @@ async function recognizeCells(img,key){
   tiles.forEach((t,i)=>{const X=(i%cols)*tw,Y=Math.floor(i/cols)*th;
     const sw=t.x1-t.x0,sh=t.y1-t.y0,dw=Math.min(TW*SC,sw*SC*(TH2/sh)),dh=TH2*SC;
     g.drawImage(img,t.x0,t.y0,sw,sh,X+LAB,Y,dw,dh);
+    if(t.id&&res.band&&res.band[t.id]){const cy=t.y0+50,bu=res.band[t.id][0],bd=res.band[t.id][1],sy=dh/sh;
+      g.fillStyle='rgba(255,255,255,0.88)';g.fillRect(X+LAB,Y,dw,Math.max(0,(cy-bu-t.y0)*sy));g.fillRect(X+LAB,Y+(cy+bd-t.y0)*sy,dw,Math.max(0,dh-(cy+bd-t.y0)*sy))}
     g.fillStyle='#222';g.fillRect(X,Y,LAB-6,th);g.fillStyle='#fff';g.font='bold 34px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(t.label.split(' ')[0],X+(LAB-6)/2,Y+th/2);
     g.strokeStyle='#999';g.lineWidth=2;g.strokeRect(X,Y,tw,th)});
   const b64=cv.toDataURL('image/jpeg',0.88).split(',')[1];
