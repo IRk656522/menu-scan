@@ -82,9 +82,14 @@ td.r,th.r{text-align:right}
 .order{border-bottom:1px solid var(--line);padding:8px 0}
 .order .hd{display:flex;justify-content:space-between;font-weight:700}
 .order .dt{font-size:13px;color:var(--muted);margin-top:3px}
+#review:not(.hidden){display:flex;flex-direction:column}
+#review .rvMain{display:contents}
+#review .rvTot{order:1} #review #photoCard{order:2} #review .rvItemsCard{order:3} #review .rvBtns{order:4}
 @media (min-width:900px){
   main{max-width:1180px}
-  #review:not(.hidden){display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
+  #review:not(.hidden){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;align-items:start}
+  #review .rvMain{display:block;grid-column:2;grid-row:1}
+  #review #photoCard{grid-column:1;grid-row:1}
   #review .rvSide{position:sticky;top:70px;max-height:calc(100vh - 160px);overflow:auto}
   #tab-report,#tab-settings,#scanStart,#scanBusy{max-width:760px;margin-left:auto;margin-right:auto}
   .stats{grid-template-columns:repeat(4,1fr)}
@@ -137,7 +142,7 @@ td.r,th.r{text-align:right}
 
     <div id="review" class="hidden">
      <div class="rvMain">
-      <div class="card">
+      <div class="card rvTot">
         <div class="total"><small>應收金額</small><span id="rvTotal">0</span> 元</div>
         <div class="meta">
           <div class="seg" id="rvDine">
@@ -148,13 +153,13 @@ td.r,th.r{text-align:right}
         <div id="rvWarn"></div>
         <details id="rvRaw" class="muted hidden" style="margin-top:6px"><summary>AI 原始結果（除錯用）</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:240px;overflow:auto"></pre></details>
       </div>
-      <div class="card">
+      <div class="card rvItemsCard">
         <div class="row" style="justify-content:space-between"><h2 style="margin:0">品項</h2>
           <div class="row"><button class="small ghost" data-zoom="-1" aria-label="字變小">A−</button><button class="small ghost" data-zoom="1" aria-label="字變大">A＋</button><button class="small" id="btnAdd">＋ 加品項</button></div></div>
         <div class="items" id="rvItems"></div>
         <p class="muted" id="rvLegend">黃色＝看不太清楚，請確認數量</p>
       </div>
-      <div class="row" style="margin-bottom:12px">
+      <div class="row rvBtns" style="margin-bottom:12px">
         <button class="ghost" id="btnCancel">取消</button>
         <button class="ok grow big" id="btnSave" style="padding:16px">確認結帳</button>
       </div>
@@ -218,7 +223,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v22</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v23</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
