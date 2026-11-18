@@ -223,7 +223,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v31</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v32</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -493,7 +493,7 @@ function inkScan(img){
     const pd=a[i+1]&&(TPL[a[i+1]][1]+fx[a[i+1]])-cy<100?((TPL[a[i+1]][1]+fx[a[i+1]])-cy)/2:45;band[id]=[pu,pd]})}
   // 每個品項的判斷範圍：價格右邊到方框右側（寫在品名上的不算）；方框內權重較高
   const ids=ids0,tight=ids.map(id=>{const[cx,cy0]=TPL[id],cy=cy0+fx[id];return[(cx-39)*k,(cy-26)*k,(cx+39)*k,(cy+26)*k]}),boxes=ids.map(id=>{const[cx,cy0]=TPL[id],cy=cy0+fx[id];const x0=cy<700?cx-42:cx-95;return[x0*k,(cy-band[id][0])*k,Math.min(1284,cx+65)*k,(cy+band[id][1])*k]});
-  const out={},shape={};for(const id of ids)out[id]=0;
+  const out={},shape={},cancel={};for(const id of ids)out[id]=0;
   // 一筆一筆（連通區塊）算：落在哪個方框的比例最高，≥30% 才算那一格
   const lab=new Uint8Array(N),st=new Int32Array(N);
   for(let p0=0;p0<N;p0++){if(!red[p0]||lab[p0])continue;let sp=0,n=0;st[sp++]=p0;lab[p0]=1;const pts=[];
@@ -508,9 +508,14 @@ function inkScan(img){
       // 形狀：同時有長橫線和長直線（T／丅）→ 至少 2 份
       const set=new Set(pts);let hr=0,vr=0;
       for(const p of pts){if(!set.has(p-1)){let L=0,q=p;while(set.has(q)){L++;q++}hr=Math.max(hr,L)}if(!set.has(p-CW)){let L=0,q=p;while(set.has(q)){L++;q+=CW}vr=Math.max(vr,L)}}
-      if(hr>=18&&vr>=15)shape[ids[bj]]=true}
+      if(hr>=18&&vr>=15)shape[ids[bj]]=true;
+      // 叉叉（兩條斜線交叉、沒有長橫線直線）→ 取消
+      let x0=1e9,x1=-1,y0=1e9,y1=-1;for(const p of pts){const x=p%CW,y=(p/CW)|0;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+      const bw=x1-x0,bh=y1-y0;
+      if(bw>=14&&bh>=14&&hr<14&&vr<14){let a1=0,a2=0;for(const p of pts){const u=(p%CW-x0)/bw,v=(((p/CW)|0)-y0)/bh;if(Math.abs(u-v)<0.2)a1++;if(Math.abs(u+v-1)<0.2)a2++}
+        if(a1/n>0.3&&a2/n>0.3&&(a1+a2)/n>0.8)cancel[ids[bj]]=true}}
   }
-  return {out,fix:fx,shape,band};
+  return {out,fix:fx,shape,band,cancel};
 }
 function inkCheck(img,r){
   if(!img._rectified)return;
@@ -666,7 +671,10 @@ ${list}
 - 阿拉伯數字照寫的數字（2 就是 2，即使寫得很大、超出方框）。
 - 正字筆畫：一=1、丅（一橫一豎，豎線可能超出方框）=2、下=3、正少一筆=4、正=5，多個要相加。
 - 只有一條橫線、斜線、勾、弧線 = 1。
-- 方框旁邊寫「大」→ large=true。
+- 方框旁邊或附近寫「大」→ large=true（數量照另外的劃記，沒有其他劃記就是 1）。
+- 打叉叉（X，兩條斜線交叉）= 取消，qty=0。
+- 如果這一格裡的筆跡明顯只是上下隔壁列的大字延伸過來的一小段，qty=0。
+- 線條主要畫在品名下面、看不出是不是要點的，uncertain=true。
 - 有一點不確定就 uncertain=true。
 每一格都要回傳（n 是編號，從 1 開始），只回傳 JSON。`;
   const t1=Date.now();
@@ -677,11 +685,15 @@ ${list}
   window._lastRaw=txt;window._lastTiles=cv.toDataURL('image/jpeg',0.7);
   let o;try{o=JSON.parse(txt.replace(/^```(json)?|```$/g,'').trim())}catch(e){throw new Error('辨識結果格式錯誤')}
   const by={};for(const c of o.cells||[])by[c.n]=c;
-  const items=ids.map((id,i)=>{const c=by[i+1];let qty=c?Math.max(1,Math.min(99,parseInt(c.qty)||1)):1,unsure=!c||!!c.uncertain||!(parseInt(c.qty)>0),note='';
+  const items=[],dropped=[];
+  ids.forEach((id,i)=>{const c=by[i+1],q0=c?parseInt(c.qty):NaN;
+    if(q0===0){dropped.push({id,qty:1,large:false,unsure:false,note:'',box:null,reason:'看起來不是點這一項（打叉，或隔壁列寫過來的字）'});return}
+    let qty=c?Math.max(1,Math.min(99,q0||1)):1,unsure=!c||!!c.uncertain||!(q0>0),note='';
     if(res.shape[id]&&qty<2){qty=2;unsure=true;note='看起來是丅＝2'}
     if(!c)note='AI 沒回這格，數量請確認';
-    return{id,qty,large:!!(c&&c.large)&&ITEM[id].large,unsure,note,box:null}});
-  return{dine:o.dine==='外帶'?'外帶':'內用',table:String(o.table||'').slice(0,8),items,writtenTotal:0,warn:[],anchors:null,fromAI:true,rowFix:res.fix,dropped:[],aiSec:(Date.now()-t1)/1000};
+    const large=!!(c&&c.large)&&ITEM[id].large;if(large){unsure=true;note=note||'有寫「大」？請確認'}
+    items.push({id,qty,large,unsure,note,box:null})});
+  return{dine:o.dine==='外帶'?'外帶':'內用',table:String(o.table||'').slice(0,8),items,writtenTotal:0,warn:[],anchors:null,fromAI:true,rowFix:res.fix,dropped,aiSec:(Date.now()-t1)/1000};
 }
 
 async function recognize(b64,key){
@@ -716,7 +728,7 @@ function openReview(o){
   const merged=[];
   for(const l of cur.items){const f=merged.find(x=>x.id===l.id&&x.large===l.large);if(f){f.qty+=l.qty;f.unsure=f.unsure||l.unsure;if(l.note)f.note=(f.note?f.note+'；':'')+l.note}else merged.push({...l})}
   cur.items=merged;
-  cur.ai=cur.fromAI?merged.map(l=>({id:l.id,large:l.large,qty:l.qty,box:l.box,unsure:l.unsure})):[];
+  cur.ai=cur.fromAI?merged.map(l=>({id:l.id,large:l.large,qty:l.qty,box:l.box,unsure:l.unsure})).concat((cur.dropped||[]).filter(l=>l.reason).map(l=>({id:l.id,large:false,qty:1,box:null,cancelled:true}))):[];
   show($('#scanStart'),false); show($('#review'),true);
   $('#rvTable').value=cur.table||'';
   cur._img=null;
@@ -734,7 +746,7 @@ function drawBoxes(g,W,H,ai,items){
     const cur1=items.find(l=>l.id===a.id);
     const [y0,x0,y1,x1]=a.box,x=x0/1000*W,y=y0/1000*H,w=(x1-x0)/1000*W,h=(y1-y0)/1000*H;
     let c,t;
-    if(now===0){c='#7a7a7a';t=m.name+' 已取消'}
+    if(now===0){c='#7a7a7a';t=m.name+(a.cancelled?' 不計':' 已取消')}
     else if(now!==a.qty){c='#1556d6';t=m.name+' '+a.qty+'→'+now}
     else{c=(cur1&&cur1.unsure)?'#f08c00':'#12a150';t=m.name+((cur1&&cur1.large)?'(大)':'')+' ×'+now}
     g.strokeStyle=c;g.lineWidth=lw;g.setLineDash(now===0?[lw*3,lw*2]:[]);g.strokeRect(x,y,w,h);g.setLineDash([]);
@@ -790,7 +802,8 @@ document.querySelectorAll('#rvDine button').forEach(b=>b.classList.toggle('on',b
   if(cur.writtenTotal&&cur.writtenTotal!==total) w+=`<div class="note">${cur.src==='qr'?'客人手機上顯示':'客人寫的總計是'} <b>${money(cur.writtenTotal)}</b> 元，和計算結果不同（以櫃檯價格為準），請確認。</div>`;
   const zero=cur.items.filter(l=>ITEM[l.id]&&!ITEM[l.id].price).map(l=>ITEM[l.id].name);
   if(zero.length) w+=`<div class="note">${zero.map(esc).join('、')} 還沒設定價格（目前算 0 元），請到設定頁的菜單補上。</div>`;
-  if(cur.dropped&&cur.dropped.length) w+=`<div class="note">AI 讀到以下品項，但沒有筆跡 30% 以上落在那一格，已先排除不計價：${cur.dropped.map((l,i)=>`<button class="small" data-restore="${i}" style="margin:4px 4px 0 0">＋ 加回 ${esc(ITEM[l.id].name)}×${l.qty}</button>`).join('')}</div>`;
+  if(cur.dropped&&cur.dropped.length){const groups={};cur.dropped.forEach((l,i)=>{const r=l.reason||'AI 讀到但沒有筆跡 30% 以上落在那一格';(groups[r]??=[]).push([l,i])});
+    for(const r in groups) w+=`<div class="note"><b>${esc(r)}</b>，不計價：${groups[r].map(([l,i])=>`<button class="small" data-restore="${i}" style="margin:4px 4px 0 0">＋ 加回 ${esc(ITEM[l.id].name)}</button>`).join('')}</div>`}
   if(cur.timing)w+=`<div class="muted" style="margin-top:6px">${esc(cur.timing)}</div>`;
   $('#rvWarn').innerHTML=w;
   const box=$('#rvItems');
@@ -1178,7 +1191,7 @@ function checkHash(){
 }
 window.addEventListener('hashchange',checkHash);
 
-$('#shopName').textContent=SHOP_NAME+' · v31';document.title='點單掃描・'+SHOP_NAME;
+$('#shopName').textContent=SHOP_NAME+' · v32';document.title='點單掃描・'+SHOP_NAME;
 applyMode();
 if(LS.get('mode',null)===null&&!/[#&]o=1\./.test(location.hash)){show($('nav'),false);gotoTab('mode')}
 checkHash();
