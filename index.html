@@ -223,7 +223,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v25</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v26</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -473,8 +473,8 @@ function inkScan(img){
   // 菜單上印的紅色圖案（例如辣椒）不算
   if(typeof TPL_IGNORE!=='undefined')for(const [x0,y0,x1,y1] of TPL_IGNORE)for(let y=Math.floor(y0*k);y<y1*k;y++)for(let x=Math.floor(x0*k);x<x1*k;x++)red[y*CW+x]=0;
   // 每個品項的數量方框（範本座標 ±39×±26）
-  // 每個品項的整列範圍：品名＋價格＋方框（湯麵表格只用該格）
-  const ids=Object.keys(TPL),tight=ids.map(id=>{const[cx,cy]=TPL[id];return[(cx-39)*k,(cy-26)*k,(cx+39)*k,(cy+26)*k]}),boxes=ids.map(id=>{const[cx,cy]=TPL[id];const x0=cy<700?cx-42:cx<500?40:cx<1000?455:885;return[x0*k,(cy-30)*k,Math.min(1284,cx+60)*k,(cy+30)*k]});
+  // 每個品項的判斷範圍：價格右邊到方框右側（寫在品名上的不算）
+  const ids=Object.keys(TPL),tight=ids.map(id=>{const[cx,cy]=TPL[id];return[(cx-39)*k,(cy-26)*k,(cx+39)*k,(cy+26)*k]}),boxes=ids.map(id=>{const[cx,cy]=TPL[id];const x0=cy<700?cx-42:cx-95;return[x0*k,(cy-30)*k,Math.min(1284,cx+65)*k,(cy+30)*k]});
   const out={};for(const id of ids)out[id]=0;
   // 一筆一筆（連通區塊）算：落在哪個方框的比例最高，≥30% 才算那一格
   const lab=new Uint8Array(N),st=new Int32Array(N);
@@ -501,7 +501,9 @@ function inkCheck(img,r){
     }
   }
   // AI 說有、但格子附近完全沒有紅筆 → 先排除，讓店家可以一鍵加回
-  r.dropped=[]; // 照店家要求：AI 讀到的一律保留，只標黃色提醒
+  // 對位準確時：AI 讀到、但沒有任何一筆 30% 落在該格範圍 → 先排除（可一鍵加回）；對位不準就全部保留
+  r.dropped=img._loose?[]:r.items.filter(l=>TPL[l.id]&&!ink[l.id]&&have.has(l.id));
+  r.items=r.items.filter(l=>!r.dropped.includes(l));
   for(const l of r.items){if(TPL[l.id]&&ink[l.id]<TH/3&&!l.unsure){l.unsure=true;l.note=l.note||'這列沒看到筆跡'}}
   r.inkAdded=Object.keys(ink).filter(id=>ink[id]>=TH&&!have.has(id)).length;
   if(r.inkAdded)r.warn.push(`AI 漏了 ${r.inkAdded} 格有筆跡的品項，已幫你加上（黃色），請確認數量。`);
@@ -518,7 +520,7 @@ ${LAYOUT_HINT}
 ${list.join('\n')}
 
 請找出「每一個有被寫上數量的方格」，回傳對應的品項代碼與數量。規則：
-1. 數量可能是阿拉伯數字，或「正」字筆畫計數：一=1、丅(兩筆)=2、下(三筆)=3、正少一筆(四筆)=4、正=5；多個正字或正字加筆畫要相加。
+1. 數量可能是阿拉伯數字，或「正」字筆畫計數：一=1、丅(兩筆)=2、下(三筆)=3、正少一筆(四筆)=4、正=5；多個正字或正字加筆畫要相加。一橫加一豎（像 T 或 丅，豎線可能超出格子）一定是 2。
 2. 只有一條橫線或斜線＝1。打勾 ✓ 也＝1。
 3. 筆畫可能寫歪、超出方格、跨到隔壁欄的空白處：依照筆畫最靠近、最對齊的那一列品項判斷。
 4. 方格旁邊寫「大」代表該品項加大，large=true（數量照寫的數字/正字）。
@@ -712,7 +714,7 @@ document.querySelectorAll('#rvDine button').forEach(b=>b.classList.toggle('on',b
   if(cur.writtenTotal&&cur.writtenTotal!==total) w+=`<div class="note">${cur.src==='qr'?'客人手機上顯示':'客人寫的總計是'} <b>${money(cur.writtenTotal)}</b> 元，和計算結果不同（以櫃檯價格為準），請確認。</div>`;
   const zero=cur.items.filter(l=>ITEM[l.id]&&!ITEM[l.id].price).map(l=>ITEM[l.id].name);
   if(zero.length) w+=`<div class="note">${zero.map(esc).join('、')} 還沒設定價格（目前算 0 元），請到設定頁的菜單補上。</div>`;
-  if(cur.dropped&&cur.dropped.length) w+=`<div class="note">AI 讀到以下品項，但那格<b>沒有筆跡</b>，已先排除不計價：${cur.dropped.map((l,i)=>`<button class="small" data-restore="${i}" style="margin:4px 4px 0 0">＋ 加回 ${esc(ITEM[l.id].name)}×${l.qty}</button>`).join('')}</div>`;
+  if(cur.dropped&&cur.dropped.length) w+=`<div class="note">AI 讀到以下品項，但沒有筆跡 30% 以上落在那一格，已先排除不計價：${cur.dropped.map((l,i)=>`<button class="small" data-restore="${i}" style="margin:4px 4px 0 0">＋ 加回 ${esc(ITEM[l.id].name)}×${l.qty}</button>`).join('')}</div>`;
   $('#rvWarn').innerHTML=w;
   const box=$('#rvItems');
   if(!cur.items.length){box.innerHTML='<p class="muted">還沒有品項，按「＋ 加品項」。</p>';show($('#rvLegend'),false);return}
