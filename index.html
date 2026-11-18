@@ -223,7 +223,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v29</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v30</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -1174,7 +1174,7 @@ function checkHash(){
 }
 window.addEventListener('hashchange',checkHash);
 
-$('#shopName').textContent=SHOP_NAME;document.title='點單掃描・'+SHOP_NAME;
+$('#shopName').textContent=SHOP_NAME+' · v30';document.title='點單掃描・'+SHOP_NAME;
 applyMode();
 if(LS.get('mode',null)===null&&!/[#&]o=1\./.test(location.hash)){show($('nav'),false);gotoTab('mode')}
 checkHash();
