@@ -218,7 +218,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v19</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v20</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -361,6 +361,10 @@ async function onFile(input){
   const key=LS.get('apiKey','');
   let img;
   try{ img=await loadImage(f) }catch(e){ alert('讀不到這張照片'); return }
+  // 有菜單範本的店：自動找紙的四個角、拉正裁切
+  let rectified=false;
+  if(typeof TPL!=='undefined'){try{const rc=rectify(img);if(rc){img=await loadImage(await new Promise(r=>rc.toBlob(r,'image/jpeg',0.9)));rectified=true}}catch(e){console.error(e)}}
+  img._rectified=rectified;
   const big=resize(img,1600,0.85);
   const thumb=resize(img,700,0.6);
   if(!key){ openReview({dine:'內用',table:'',items:[],photo:big,thumb,warn:['還沒設定 API Key，請手動加品項，或到「設定」貼上 Key。']}); return }
@@ -369,6 +373,7 @@ async function onFile(input){
   try{
     const r=await recognize(big.split(',')[1],key);
     try{inkCheck(img,r)}catch(e){console.error(e)}
+    if(!rectified&&typeof TPL!=='undefined'&&!isExactTpl(img))r.warn.push('找不到菜單的邊緣，格子位置可能不準。請把整張菜單拍進去、背景不要太亮。');
     openReview({...r,photo:big,thumb});
   }catch(e){
     console.error(e);
@@ -378,19 +383,64 @@ async function onFile(input){
   }
 }
 
+/* ========= 拉正照片：找菜單紙四角 → 透視校正成範本大小 ========= */
+function isExactTpl(img){return Math.abs(img.naturalWidth/img.naturalHeight-1284/1806)<0.012}
+function rectify(img){
+  const W=img.naturalWidth,H=img.naturalHeight;
+  const s=420/Math.max(W,H),w=Math.round(W*s),h=Math.round(H*s);
+  const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0,w,h);
+  const d=g.getImageData(0,0,w,h).data;
+  // 紙：亮、顏色淡；先算亮度門檻（Otsu）
+  const hist=new Array(256).fill(0),lum=new Uint8Array(w*h),sat=new Float32Array(w*h);
+  for(let i=0,p=0;i<d.length;i+=4,p++){const r=d[i],gg=d[i+1],b=d[i+2],mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);lum[p]=mx;sat[p]=mx?(mx-mn)/mx:0;hist[mx]++}
+  let tot=w*h,sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let sB=0,wB=0,best=0,th=150;
+  for(let t=0;t<256;t++){wB+=hist[t];if(!wB)continue;const wF=tot-wB;if(!wF)break;sB+=t*hist[t];const mB=sB/wB,mF=(sum-sB)/wF,v=wB*wF*(mB-mF)*(mB-mF);if(v>best){best=v;th=t}}
+  const mask=new Uint8Array(w*h);for(let p=0;p<w*h;p++)mask[p]=(lum[p]>=Math.min(th,150)*0.75&&sat[p]<0.25)?1:0;
+  // 最大的亮色連通區塊
+  const lab=new Int32Array(w*h),stack=new Int32Array(w*h);let bestN=0,bestL=0,L=0;
+  for(let p0=0;p0<w*h;p0++){if(!mask[p0]||lab[p0])continue;L++;let sp=0,n=0;stack[sp++]=p0;lab[p0]=L;
+    while(sp){const p=stack[--sp];n++;const x=p%w,y=(p/w)|0;
+      if(x>0&&mask[p-1]&&!lab[p-1]){lab[p-1]=L;stack[sp++]=p-1}if(x<w-1&&mask[p+1]&&!lab[p+1]){lab[p+1]=L;stack[sp++]=p+1}
+      if(y>0&&mask[p-w]&&!lab[p-w]){lab[p-w]=L;stack[sp++]=p-w}if(y<h-1&&mask[p+w]&&!lab[p+w]){lab[p+w]=L;stack[sp++]=p+w}}
+    if(n>bestN){bestN=n;bestL=L}}
+  if(bestN<w*h*0.15)return null;
+  // 四個角：x+y 最小/最大、x-y 最大/最小
+  let tl=[0,0,1e9],br=[0,0,-1e9],tr=[0,0,-1e9],bl=[0,0,1e9];
+  for(let p=0;p<w*h;p++){if(lab[p]!==bestL)continue;const x=p%w,y=(p/w)|0,a=x+y,b=x-y;
+    if(a<tl[2])tl=[x,y,a];if(a>br[2])br=[x,y,a];if(b>tr[2])tr=[x,y,b];if(b<bl[2])bl=[x,y,b]}
+  const q=[tl,tr,br,bl].map(p=>[(p[0]+.5)/s,(p[1]+.5)/s]);
+  // 合理性：面積、長寬比
+  const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  const top=dist(q[0],q[1]),bot=dist(q[3],q[2]),lef=dist(q[0],q[3]),rig=dist(q[1],q[2]);
+  const ratio=((top+bot)/2)/((lef+rig)/2);
+  if(ratio<0.5||ratio>0.95)return null;
+  if(Math.min(top,bot)/Math.max(top,bot)<0.6||Math.min(lef,rig)/Math.max(lef,rig)<0.6)return null;
+  // 已經是正拍整張（四角幾乎貼邊）就不用處理
+  // 透視校正：範本座標 → 照片座標
+  const f=makeMap([[0,0],[1284,0],[1284,1806],[0,1806]],q);if(!f)return null;
+  const S=Math.min(1,2000/Math.max(W,H)),sw=Math.round(W*S),sh=Math.round(H*S);
+  const sc=document.createElement('canvas');sc.width=sw;sc.height=sh;const sg=sc.getContext('2d',{willReadFrequently:true});sg.drawImage(img,0,0,sw,sh);
+  const src=sg.getImageData(0,0,sw,sh).data;
+  const out=document.createElement('canvas');out.width=1284;out.height=1806;const og=out.getContext('2d');const od=og.createImageData(1284,1806),o=od.data;
+  for(let v=0;v<1806;v++)for(let u=0;u<1284;u++){const [X,Y]=f([u+.5,v+.5]);const x=Math.min(sw-1,Math.max(0,Math.round(X*S))),y=Math.min(sh-1,Math.max(0,Math.round(Y*S)));const si=(y*sw+x)*4,oi=(v*1284+u)*4;o[oi]=src[si];o[oi+1]=src[si+1];o[oi+2]=src[si+2];o[oi+3]=255}
+  og.putImageData(od,0,0);
+  out._quad=q;
+  return out;
+}
+
 /* ========= 紅筆墨跡檢查（不靠 AI，補漏用）========= */
 // 只在照片比例跟菜單範本相同時使用；回傳每個品項格子附近的紅色像素數
 function inkScan(img){
   if(typeof TPL==='undefined')return null;
   const W=img.naturalWidth,H=img.naturalHeight;
-  if(Math.abs(W/H-1284/1806)>0.06)return null;
+  if(Math.abs(W/H-1284/1806)>0.012)return null;
   const cv=document.createElement('canvas');cv.width=1284;cv.height=1806;
   const g=cv.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0,1284,1806);
   const out={};
   for(const id in TPL){const [cx,cy]=TPL[id];
     const rc=cx>1000, x0=Math.max(0,cx-42),y0=Math.max(0,cy-(rc?32:38)),w=Math.min(1284-x0,112),h=rc?64:72;
     const d=g.getImageData(x0,y0,w,h).data;let n=0;
-    for(let i=0;i<d.length;i+=4){const r=d[i],gg=d[i+1],b=d[i+2];if(r>150&&r-gg>70&&r-b>60)n++}
+    for(let i=0;i<d.length;i+=4){const r=d[i],gg=d[i+1],b=d[i+2];if(r>140&&gg<r*0.5&&b<r*0.55)n++}
     out[id]=n;
   }
   return out;
@@ -577,7 +627,7 @@ function tplBox(id,W,H,anchors){
   const x0=cx<500?40:cx<1000?455:885, pts=[[x0,cy-34],[cx+45,cy+34]];
   let f=null;
   // 照片比例跟菜單範本一樣（截圖、正拍）→ 直接等比例換算，最準
-  if(Math.abs(W/H-1284/1806)<0.06) f=p=>[p[0]/1284*W,p[1]/1806*H];
+  if(Math.abs(W/H-1284/1806)<0.012) f=p=>[p[0]/1284*W,p[1]/1806*H];
   else {const pm=photoMap(anchors,W,H); if(pm)f=pm.f}
   if(!f)return null;
   const a=f(pts[0]),b=f(pts[1]);
