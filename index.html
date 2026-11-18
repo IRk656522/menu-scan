@@ -218,7 +218,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v20</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v21</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -456,7 +456,10 @@ function inkCheck(img,r){
       r.items.push({id,qty:1,large:false,unsure:true,note:weak?'可能是隔壁格的筆跡':'偵測到筆跡',box:null});
     }
   }
-  for(const l of r.items){if(TPL[l.id]&&ink[l.id]<TH/3&&!l.unsure){l.unsure=true;l.note=l.note||'沒看到筆跡'}}
+  // AI 說有、但格子附近完全沒有紅筆 → 先排除，讓店家可以一鍵加回
+  r.dropped=r.items.filter(l=>TPL[l.id]&&ink[l.id]<12&&have.has(l.id));
+  r.items=r.items.filter(l=>!r.dropped.includes(l));
+  for(const l of r.items){if(TPL[l.id]&&ink[l.id]<TH/3&&!l.unsure){l.unsure=true;l.note=l.note||'筆跡很淡'}}
   r.inkAdded=Object.keys(ink).filter(id=>ink[id]>=TH&&!have.has(id)).length;
   if(r.inkAdded)r.warn.push(`AI 漏了 ${r.inkAdded} 格有筆跡的品項，已幫你加上（黃色），請確認數量。`);
 }
@@ -655,7 +658,10 @@ function drawReviewPhoto(){
 }
 function renderReview(){
   drawReviewPhoto();
-  document.querySelectorAll('#rvDine button').forEach(b=>b.classList.toggle('on',b.dataset.v===cur.dine));
+  $('#rvWarn').onclick=e=>{const b=e.target.closest('[data-restore]');if(!b||!cur.dropped)return;
+  const l=cur.dropped.splice(+b.dataset.restore,1)[0];if(!l)return;l.unsure=false;l.note='';cur.items.push(l);
+  if(cur.ai&&!cur.ai.some(a=>a.id===l.id))cur.ai.push({id:l.id,large:l.large,qty:l.qty,box:null});cur._filled=null;renderReview()};
+document.querySelectorAll('#rvDine button').forEach(b=>b.classList.toggle('on',b.dataset.v===cur.dine));
   show($('#rvTable'),cur.dine==='內用');
   const total=orderTotal(cur);
   $('#rvTotal').textContent=money(total);
@@ -663,6 +669,7 @@ function renderReview(){
   if(cur.writtenTotal&&cur.writtenTotal!==total) w+=`<div class="note">${cur.src==='qr'?'客人手機上顯示':'客人寫的總計是'} <b>${money(cur.writtenTotal)}</b> 元，和計算結果不同（以櫃檯價格為準），請確認。</div>`;
   const zero=cur.items.filter(l=>ITEM[l.id]&&!ITEM[l.id].price).map(l=>ITEM[l.id].name);
   if(zero.length) w+=`<div class="note">${zero.map(esc).join('、')} 還沒設定價格（目前算 0 元），請到設定頁的菜單補上。</div>`;
+  if(cur.dropped&&cur.dropped.length) w+=`<div class="note">AI 讀到以下品項，但那格<b>沒有筆跡</b>，已先排除不計價：${cur.dropped.map((l,i)=>`<button class="small" data-restore="${i}" style="margin:4px 4px 0 0">＋ 加回 ${esc(ITEM[l.id].name)}×${l.qty}</button>`).join('')}</div>`;
   $('#rvWarn').innerHTML=w;
   const box=$('#rvItems');
   if(!cur.items.length){box.innerHTML='<p class="muted">還沒有品項，按「＋ 加品項」。</p>';show($('#rvLegend'),false);return}
