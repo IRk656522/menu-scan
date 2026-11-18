@@ -122,6 +122,11 @@ td.r,th.r{text-align:right}
 .chip input{width:46px;padding:3px 4px;text-align:center;font-size:14px;border-radius:8px}
 .chip button{background:none;padding:0 4px;font-size:16px;color:var(--muted)}
 .mat select{font-size:14px;padding:6px;margin-top:8px;width:auto}
+.linkcard{display:grid;grid-template-columns:1fr auto;width:100%;text-align:left;font:inherit;align-items:center;gap:2px 10px;cursor:pointer}
+.linkcard b{font-size:17px}.linkcard span{grid-column:1}.linkcard i{grid-row:1/3;grid-column:2;font-style:normal;font-size:28px;color:var(--muted)}
+.picker .grid button{position:relative}
+.picker .grid button.has{background:#fff1df;border-color:var(--brand2);font-weight:700}
+.picker .grid button .badge{position:absolute;top:-8px;right:-6px;background:var(--brand);color:#fff;font-size:12px;font-weight:800;border-radius:10px;padding:1px 7px;font-style:normal}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:20px;z-index:30;font-size:15px}
 </style>
 </head>
@@ -216,6 +221,19 @@ td.r,th.r{text-align:right}
   </section>
 
   <!-- 設定 -->
+  <section id="tab-mats" class="hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0">🥚 備料材料對照</h2><button class="small ghost" id="btnMatsBack">‹ 返回設定</button></div>
+      <p class="muted">每個材料用在哪些品項、每份用多少。業績頁會用「建議備量 × 用量」算出要準備多少材料。</p>
+      <div id="matList"></div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap">
+        <button class="ghost" id="btnMatAdd">＋ 新增材料</button>
+        <button class="primary grow" id="btnMatSave">儲存</button>
+        <button class="ghost" id="btnMatReset">還原預設</button>
+      </div>
+    </div>
+  </section>
+
   <section id="tab-mode" class="hidden">
     <div class="card">
       <h2 style="font-size:22px">選擇點單方式</h2>
@@ -251,7 +269,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v35</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v36</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -275,16 +293,7 @@ td.r,th.r{text-align:right}
       </div>
       <p class="muted" id="storageInfo"></p>
     </div>
-    <div class="card">
-      <h2>🥚 備料材料對照</h2>
-      <p class="muted">每個材料用在哪些品項、每份用多少。業績頁會用「建議備量 × 用量」算出要準備多少材料。</p>
-      <div id="matList"></div>
-      <div class="row" style="margin-top:10px;flex-wrap:wrap">
-        <button class="ghost" id="btnMatAdd">＋ 新增材料</button>
-        <button class="primary grow" id="btnMatSave">儲存</button>
-        <button class="ghost" id="btnMatReset">還原預設</button>
-      </div>
-    </div>
+    <button class="card linkcard" id="btnOpenMats"><b>🥚 備料材料對照</b><span class="muted">設定每個材料用在哪些品項、每份用多少</span><i>›</i></button>
     <div class="card">
       <h2>菜單與價格</h2>
       <p class="muted">改價格或品項後按儲存。large: true 代表可加大。</p>
@@ -365,7 +374,7 @@ function show(el,on){el.classList.toggle('hidden',!on)}
 /* ========= 分頁 ========= */
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  for(const t of ['scan','report','settings','mode']) show($('#tab-'+t),t===b.dataset.tab);
+  for(const t of ['scan','report','settings','mode','mats']) show($('#tab-'+t),t===b.dataset.tab);
   if(b.dataset.tab!=='scan'&&qrStream)stopQrScan();
   if(b.dataset.tab==='report') renderReport();
   if(b.dataset.tab==='settings') loadSettings();
@@ -967,15 +976,17 @@ async function annotate(c,o){
 }
 
 /* ========= 加品項 ========= */
+function pickMarks(){document.querySelectorAll('#pickBody button[data-id]').forEach(b=>{const n=cur.items.filter(l=>l.id===b.dataset.id).reduce((a,l)=>a+l.qty,0);
+  b.classList.toggle('has',n>0);let t=b.querySelector('.badge');if(n>0){if(!t){t=document.createElement('em');t.className='badge';b.appendChild(t)}t.textContent='×'+n}else if(t)t.remove()})}
 $('#btnAdd').onclick=()=>{
   $('#pickBody').innerHTML=MENU.map(s=>`<h3>${esc(s.sec)}</h3><div class="grid">${s.items.map(([id,name,price])=>`<button data-id="${esc(id)}">${esc(name)}<i>${price}</i></button>`).join('')}</div>`).join('');
-  show($('#pickSheet'),true);
+  pickMarks();show($('#pickSheet'),true);
 };
 $('#pickBody').onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
   const f=cur.items.find(x=>x.id===b.dataset.id&&!x.large);
   if(f)f.qty++;else cur.items.push({id:b.dataset.id,qty:1,large:false,unsure:false,note:''});
-  renderReview();toast('＋ '+ITEM[b.dataset.id].name);
+  renderReview();pickMarks();toast('＋ '+ITEM[b.dataset.id].name);
 };
 $('#btnPickClose').onclick=()=>show($('#pickSheet'),false);
 $('#pickSheet').onclick=e=>{if(e.target.id==='pickSheet')show($('#pickSheet'),false)};
@@ -1086,7 +1097,6 @@ async function updateTodaySum(){
 function loadSettings(){
   $('#sKey').value=LS.get('apiKey','');
   fillModels();
-  renderMats();
   try{renderCustQr()}catch(e){}
   if($('#sKey').value&&!LS.get('models',null))$('#sKey').onchange();
   $('#sKeepPhoto').checked=LS.get('keepPhoto',true);
@@ -1219,6 +1229,8 @@ $('#matList').onchange=e=>{if(e.target.matches('[data-add]')&&e.target.value){co
 $('#matList').onclick=e=>{const b=e.target.closest('button');if(!b)return;
   if(b.dataset.del!=null){if(confirm('刪除「'+MATS[+b.dataset.del].name+'」？')){MATS.splice(+b.dataset.del,1);renderMats()}}
   if(b.dataset.rm){const m=MATS[+b.closest('.mat').dataset.i];delete m.uses[b.dataset.rm];renderMats()}};
+$('#btnOpenMats').onclick=()=>{for(const x of ['scan','report','settings','mode','mats'])show($('#tab-'+x),x==='mats');renderMats();window.scrollTo(0,0)};
+$('#btnMatsBack').onclick=()=>{show($('#tab-mats'),false);show($('#tab-settings'),true);window.scrollTo(0,0)};
 $('#btnMatAdd').onclick=()=>{MATS.push({name:'',unit:'份',uses:{}});renderMats();const ins=$('#matList').querySelectorAll('.mn');ins[ins.length-1].focus()};
 $('#btnMatSave').onclick=()=>{MATS=MATS.filter(m=>m.name.trim());LS.set('materials',MATS);renderMats();toast('材料對照已儲存')};
 $('#btnMatReset').onclick=()=>{if(!confirm('還原成預設的材料對照？'))return;MATS=JSON.parse(JSON.stringify(typeof DEFAULT_MATERIALS!=='undefined'?DEFAULT_MATERIALS:[]));LS.set('materials',MATS);renderMats();toast('已還原')};
@@ -1233,7 +1245,7 @@ function applyMode(){applyAcc();
   document.querySelectorAll('#sMode button,.modeOpt').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
 }
 function gotoTab(t){
-  for(const x of ['scan','report','settings','mode']) show($('#tab-'+x),x===t);
+  for(const x of ['scan','report','settings','mode','mats']) show($('#tab-'+x),x===t);
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   if(t==='settings')loadSettings();
   if(t==='report')renderReport();
@@ -1305,7 +1317,7 @@ function checkHash(){
 }
 window.addEventListener('hashchange',checkHash);
 
-$('#shopName').textContent=SHOP_NAME+' · v35';document.title='點單掃描・'+SHOP_NAME;
+$('#shopName').textContent=SHOP_NAME+' · v36';document.title='點單掃描・'+SHOP_NAME;
 applyMode();
 if(LS.get('mode',null)===null&&!/[#&]o=1\./.test(location.hash)){show($('nav'),false);gotoTab('mode')}
 checkHash();
