@@ -223,7 +223,7 @@ td.r,th.r{text-align:right}
       <p class="muted">品項、數量、金額會跟著變大變小。結帳畫面也可以直接按 A− / A＋ 調整。用平板時畫面會自動左右分欄。</p>
     </div>
     <div class="card">
-      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v32</span></h2>
+      <h2>Gemini 辨識設定 <span class="muted" style="font-weight:400">v33</span></h2>
       <label>API Key（只存在這支手機）</label>
       <input id="sKey" type="password" placeholder="AIza…" autocomplete="off">
       <p class="muted">到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。免費額度的資料可能被 Google 用來改善產品。</p>
@@ -648,23 +648,24 @@ async function recognizeCells(img,key){
   if(!ids.length)return null; // 沒偵測到紅筆（可能用別的顏色）→ 改用整張辨識
   ids.sort((a,b)=>TPL[a][0]-TPL[b][0]||TPL[a][1]-TPL[b][1]);
   // 拼圖：第 0 格是內用/外帶框，其餘每格一個品項
-  const SC=1.5,TW=280,TH2=100,LAB=56,cols=2;
-  const tiles=[{x0:805,y0:262,x1:1250,y1:418,label:'0 用餐'}].concat(ids.map((id,i)=>{const[cx,cy0]=TPL[id],cy=cy0+((res.fix&&res.fix[id])||0);return{id,x0:cx-160,y0:cy-50,x1:cx+120,y1:cy+50,label:String(i+1)}}));
+  const SC=1.5,TW=280,TH2=150,LAB=56,cols=2;
+  const tiles=[{x0:805,y0:262,x1:1250,y1:418,label:'0 用餐'}].concat(ids.map((id,i)=>{const[cx,cy0]=TPL[id],cy=cy0+((res.fix&&res.fix[id])||0);return{id,x0:cx-160,y0:cy-75,x1:cx+120,y1:cy+75,label:String(i+1)}}));
   const tw=TW*SC+LAB,th=TH2*SC,rows=Math.ceil(tiles.length/cols);
   const cv=document.createElement('canvas');cv.width=tw*cols;cv.height=th*rows;const g=cv.getContext('2d');
   g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);
   tiles.forEach((t,i)=>{const X=(i%cols)*tw,Y=Math.floor(i/cols)*th;
     const sw=t.x1-t.x0,sh=t.y1-t.y0,dw=Math.min(TW*SC,sw*SC*(TH2/sh)),dh=TH2*SC;
     g.drawImage(img,t.x0,t.y0,sw,sh,X+LAB,Y,dw,dh);
-    if(t.id&&res.band&&res.band[t.id]){const cy=t.y0+50,bu=res.band[t.id][0],bd=res.band[t.id][1],sy=dh/sh;
-      g.fillStyle='rgba(255,255,255,0.88)';g.fillRect(X+LAB,Y,dw,Math.max(0,(cy-bu-t.y0)*sy));g.fillRect(X+LAB,Y+(cy+bd-t.y0)*sy,dw,Math.max(0,dh-(cy+bd-t.y0)*sy))}
+    if(t.id&&res.band&&res.band[t.id]){const cy=t.y0+75,bu=res.band[t.id][0],bd=res.band[t.id][1],sy=dh/sh,top=(cy-bu-t.y0)*sy,bot=(cy+bd-t.y0)*sy;
+      g.fillStyle='rgba(255,255,255,0.6)';g.fillRect(X+LAB,Y,dw,Math.max(0,top));g.fillRect(X+LAB,Y+bot,dw,Math.max(0,dh-bot));
+      g.strokeStyle='#1e6bff';g.lineWidth=3;g.strokeRect(X+LAB+2,Y+top,dw-4,bot-top)}
     g.fillStyle='#222';g.fillRect(X,Y,LAB-6,th);g.fillStyle='#fff';g.font='bold 28px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(t.label.split(' ')[0],X+(LAB-6)/2,Y+th/2);
     g.strokeStyle='#999';g.lineWidth=2;g.strokeRect(X,Y,tw,th)});
   const b64=cv.toDataURL('image/jpeg',0.8).split(',')[1];
   const list=ids.map((id,i)=>`${i+1}：${ITEM[id].name}（${ITEM[id].price} 元）`).join('\n');
   const prompt=`這是一張小吃店紙本點單的局部放大拼圖。每一小格左邊黑底白字是編號。
 第 0 格是「外帶」「內用」兩個框（內用框裡手寫的是桌號）：哪個框有寫字/打勾就是那一種，桌號填在 table；都沒寫 dine 填「未知」。
-第 1 格以後，每一格是一個品項那一列（左邊是品名價格，右邊是方框），客人用紅筆在方框附近劃記數量：
+第 1 格以後，每一格的「藍框」是一個品項那一列（左邊是品名價格，右邊是方框），客人用紅筆在方框附近劃記數量。藍框外刷淡的是上下隔壁列，只是讓你看清楚跨列的大字形狀，不要把隔壁列的劃記算進來：
 ${list}
 
 請判斷每一格客人點了幾份（qty）：
@@ -1191,7 +1192,7 @@ function checkHash(){
 }
 window.addEventListener('hashchange',checkHash);
 
-$('#shopName').textContent=SHOP_NAME+' · v32';document.title='點單掃描・'+SHOP_NAME;
+$('#shopName').textContent=SHOP_NAME+' · v33';document.title='點單掃描・'+SHOP_NAME;
 applyMode();
 if(LS.get('mode',null)===null&&!/[#&]o=1\./.test(location.hash)){show($('nav'),false);gotoTab('mode')}
 checkHash();
